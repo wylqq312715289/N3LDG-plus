@@ -5,91 +5,91 @@
 #include "Graph.h"
 
 class MatrixNode : public Node {
-public:
-    explicit MatrixNode(const string &node_type) : Node(node_type + "-matrix") {}
+ public:
+  explicit MatrixNode(const string &node_type) : Node(node_type + "-matrix") {}
 };
 
 class MatrixExecutor : public Executor {
-public:
-    int getRow() const {
-        return static_cast<MatrixNode *>(batch.front())->getRow();
-    }
+ public:
+  int getRow() const {
+    return static_cast<MatrixNode *>(batch.front())->getRow();
+  }
 
-    vector<int> getCols() const {
-        vector<int> cols;
-        cols.reserve(batch.size());
-        for (Node *node : batch) {
-            MatrixNode *matrix = static_cast<MatrixNode *>(node);
-            cols.push_back(matrix->getColumn());
-        }
-        return cols;
+  vector<int> getCols() const {
+    vector<int> cols;
+    cols.reserve(batch.size());
+    for (Node *node : batch) {
+      MatrixNode *matrix = static_cast<MatrixNode *>(node);
+      cols.push_back(matrix->getColumn());
     }
+    return cols;
+  }
 };
 
 class MatrixConcatNode : public MatrixNode, public Poolable<MatrixConcatNode> {
-public:
-    virtual void initNode(int dim) override {
-        init(dim);
+ public:
+  virtual void initNode(int dim) override {
+    init(dim);
+  }
+
+  virtual void setNodeDim(int dim) override {
+    setDim(dim);
+  }
+
+  MatrixConcatNode() : MatrixNode("concat") {}
+
+  void forward(Graph &graph, const vector<Node *> &inputs) {
+    int input_dim = inputs.front()->getDim();
+    for (auto it = inputs.begin() + 1; it != inputs.end(); ++it) {
+      if (input_dim != (*it)->getDim()) {
+        cerr << "MatrixConcatNode - forward inconsistent input dims" << endl;
+        abort();
+      }
     }
 
-    virtual void setNodeDim(int dim) override {
-        setDim(dim);
+    in_nodes = inputs;
+    for (Node *in : inputs) {
+      in->addParent(this);
     }
+    setColumn(inputs.size());
+    graph.addNode(this);
+  }
 
-    MatrixConcatNode(): MatrixNode("concat") {}
-
-    void forward(Graph &graph, const vector<Node *> &inputs) {
-        int input_dim = inputs.front()->getDim();
-        for (auto it = inputs.begin() + 1; it != inputs.end(); ++it) {
-            if (input_dim != (*it)->getDim()) {
-                cerr << "MatrixConcatNode - forward inconsistent input dims" << endl;
-                abort();
-            }
-        }
-
-        in_nodes = inputs;
-        for (Node *in : inputs) {
-            in->addParent(this);
-        }
-        setColumn(inputs.size());
-        graph.addNode(this);
+  void compute() override {
+    for (int i = 0; i < in_nodes.size(); ++i) {
+      int offset = i * getRow();
+      for (int j = 0; j < getRow(); ++j) {
+        val().v[offset + j] = in_nodes.at(i)->getVal().v[j];
+      }
     }
+  }
 
-    void compute() override {
-        for (int i = 0; i < in_nodes.size(); ++i) {
-            int offset = i * getRow();
-            for (int j = 0; j < getRow(); ++j) {
-                val().v[offset + j] = in_nodes.at(i)->getVal().v[j];
-            }
-        }
+  void backward() override {
+    for (int i = 0; i < in_nodes.size(); ++i) {
+      int offset = i * getRow();
+      for (int j = 0; j < getRow(); ++j) {
+        in_nodes.at(i)->loss()[j] += loss()[offset + j];
+      }
     }
+  }
 
-    void backward() override {
-        for (int i = 0; i < in_nodes.size(); ++i) {
-            int offset = i * getRow();
-            for (int j = 0; j < getRow(); ++j) {
-                in_nodes.at(i)->loss()[j] += loss()[offset + j];
-            }
-        }
-    }
+  bool typeEqual(Node *other) override {
+    MatrixConcatNode *concat = static_cast<MatrixConcatNode *>(other);
+    return concat->getNodeType() == getNodeType() && concat->getRow() == getRow();
+  }
 
-    bool typeEqual(Node *other) override {
-        MatrixConcatNode *concat = static_cast<MatrixConcatNode*>(other);
-        return concat->getNodeType() == getNodeType() && concat->getRow() == getRow();
-    }
+  string typeSignature() const override {
+    return "MatrixConcatNode-" + to_string(getRow());
+  }
 
-    string typeSignature() const override {
-        return "MatrixConcatNode-" + to_string(getRow());
-    }
+  Executor *generate() override;
 
-    Executor* generate() override;
+  const vector<Node *> &getInputs() const {
+    return in_nodes;
+  }
 
-    const vector<Node *> &getInputs() const {
-        return in_nodes;
-    }
-
-private:
-    vector<Node *> in_nodes;
+ private:
+  vector<Node *> in_nodes;
 };
 
 #if USE_GPU
@@ -153,86 +153,81 @@ private:
 };
 #else
 class MatrixConcatExecutor : public MatrixExecutor {
-public:
-    int calculateFLOPs() override {
-        return 0;
-    }
+ public:
+  int calculateFLOPs() override {
+    return 0;
+  }
 
-    int calculateActivations() override {
-        return 0;
-    }
+  int calculateActivations() override {
+    return 0;
+  }
 };
 #endif
-
-Executor* MatrixConcatNode::generate() {
-    return new MatrixConcatExecutor;
-}
 
 class MatrixAndVectorPointwiseMultiExecutor;
 
 class MatrixAndVectorPointwiseMultiNode : public MatrixNode,
-    public Poolable<MatrixAndVectorPointwiseMultiNode> {
-public:
-    MatrixAndVectorPointwiseMultiNode() : MatrixNode("MatrixAndVectorPointwiseMulti") {}
+                                          public Poolable<MatrixAndVectorPointwiseMultiNode> {
+ public:
+  MatrixAndVectorPointwiseMultiNode() : MatrixNode("MatrixAndVectorPointwiseMulti") {}
 
-    void setNodeDim(int dim) override {
-        setDim(dim);
+  void setNodeDim(int dim) override {
+    setDim(dim);
+  }
+
+  void initNode(int dim) override {
+    init(dim);
+  }
+
+  void forward(Graph &graph, Node &matrix, Node &vec) {
+    if (matrix.getRow() != vec.getDim()) {
+      cerr << boost::format("MatrixConcatNode forward - matrix row:%1% vec dim:%2%") %
+          matrix.getRow() % vec.getDim() << endl;
+      abort();
     }
+    matrix.addParent(this);
+    vec.addParent(this);
+    matrix_ = &matrix;
+    vector_ = &vec;
+    setColumn(matrix.getColumn());
+    graph.addNode(this);
+  }
 
-    void initNode(int dim) override {
-        init(dim);
+  void compute() override {
+    int in_dim = vector_->getDim();
+    for (int i = 0; i < matrix_->getColumn(); ++i) {
+      int matrix_i = i * in_dim;
+      Vec(val().v + matrix_i, in_dim) = vector_->getVal().vec() *
+          Vec(matrix_->getVal().v + matrix_i, in_dim);
     }
+  }
 
-    void forward(Graph &graph, Node &matrix, Node &vec) {
-        if (matrix.getRow() != vec.getDim()) {
-            cerr << boost::format("MatrixConcatNode forward - matrix row:%1% vec dim:%2%") %
-                matrix.getRow() % vec.getDim() << endl;
-            abort();
-        }
-        matrix.addParent(this);
-        vec.addParent(this);
-        matrix_ = &matrix;
-        vector_ = &vec;
-        setColumn(matrix.getColumn());
-        graph.addNode(this);
+  void backward() override {
+    int in_dim = vector_->getDim();
+    for (int i = 0; i < matrix_->getColumn(); ++i) {
+      int matrix_i = i * in_dim;
+      Vec(matrix_->loss().v + matrix_i, in_dim) += Vec(getLoss().v + matrix_i, in_dim) *
+          vector_->getVal().vec();
+      vector_->loss().vec() += Vec(getLoss().v + matrix_i, in_dim) *
+          Vec(matrix_->getVal().v + matrix_i, in_dim);
     }
+  }
 
-    void compute() override {
-        int in_dim = vector_->getDim();
-        for (int i = 0; i < matrix_->getColumn(); ++i) {
-            int matrix_i = i * in_dim;
-            Vec(val().v + matrix_i, in_dim) = vector_->getVal().vec() *
-                Vec(matrix_->getVal().v + matrix_i, in_dim);
-        }
-    }
+  string typeSignature() const override {
+    return "MatrixAndVectorPointwiseMulti-" + to_string(vector_->getDim());
+  }
 
-    void backward() override {
-        int in_dim = vector_->getDim();
-        for (int i = 0; i < matrix_->getColumn(); ++i) {
-            int matrix_i = i * in_dim;
-            Vec(matrix_->loss().v + matrix_i, in_dim) += Vec(getLoss().v + matrix_i, in_dim) *
-                vector_->getVal().vec();
-            vector_->loss().vec() += Vec(getLoss().v + matrix_i, in_dim) *
-                Vec(matrix_->getVal().v + matrix_i, in_dim);
-        }
-    }
+  bool typeEqual(Node *other) override {
+    return getNodeType() == other->getNodeType() && vector_->getDim() ==
+        static_cast<MatrixAndVectorPointwiseMultiNode *>(other)->vector_->getDim();
+  }
 
+  Executor *generate() override;
 
-    string typeSignature() const override {
-        return "MatrixAndVectorPointwiseMulti-" + to_string(vector_->getDim());
-    }
-
-    bool typeEqual(Node *other) override {
-        return getNodeType() == other->getNodeType() && vector_->getDim() ==
-            static_cast<MatrixAndVectorPointwiseMultiNode *>(other)->vector_->getDim();
-    }
-
-    Executor *generate() override;
-
-private:
-    Node *matrix_ = nullptr;
-    Node *vector_ = nullptr;
-    friend class MatrixAndVectorPointwiseMultiExecutor;
+ private:
+  Node *matrix_ = nullptr;
+  Node *vector_ = nullptr;
+  friend class MatrixAndVectorPointwiseMultiExecutor;
 };
 
 #if USE_GPU
@@ -294,78 +289,74 @@ private:
 };
 #else
 class MatrixAndVectorPointwiseMultiExecutor : public MatrixExecutor {
-public:
-    int calculateFLOPs() override {
-        cerr << "MatrixAndVectorPointwiseMultiExecutor - calculateFLOPs" << endl;
-        abort();
-        return 0;
-    }
+ public:
+  int calculateFLOPs() override {
+    cerr << "MatrixAndVectorPointwiseMultiExecutor - calculateFLOPs" << endl;
+    abort();
+    return 0;
+  }
 
-    int calculateActivations() override {
-        cerr << "MatrixAndVectorPointwiseMultiExecutor - calculateActivations" << endl;
-        abort();
-        return 0;
-    }
+  int calculateActivations() override {
+    cerr << "MatrixAndVectorPointwiseMultiExecutor - calculateActivations" << endl;
+    abort();
+    return 0;
+  }
 };
 #endif
 
-Executor *MatrixAndVectorPointwiseMultiNode::generate() {
-    return new MatrixAndVectorPointwiseMultiExecutor;
-}
-
 class MatrixColSumNode : public UniInputNode, public Poolable<MatrixColSumNode> {
-public:
-    MatrixColSumNode() : UniInputNode("MatrixColSum") {}
+ public:
+  MatrixColSumNode() : UniInputNode("MatrixColSum") {}
 
-    void setNodeDim(int dim) override {
-        setDim(dim);
+  void setNodeDim(int dim) override {
+    setDim(dim);
+  }
+
+  void initNode(int dim) override {
+    init(dim);
+  }
+
+  void compute() override {
+    Node &input = *getInput();
+    for (int i = 0; i < input.getColumn(); ++i) {
+      dtype sum = 0;
+      for (int j = 0; j < input.getRow(); ++j) {
+        sum += input.getVal()[i * input.getRow() + j];
+      }
+      val()[i] = sum;
     }
+  }
 
-    void initNode(int dim) override {
-        init(dim);
+  void backward() override {
+    Node &input = *static_cast<MatrixNode *>(getInput());
+    for (int i = 0; i < input.getColumn(); ++i) {
+      for (int j = 0; j < input.getRow(); ++j) {
+        input.loss()[i * input.getRow() + j] += getLoss()[i];
+      }
     }
+  }
 
-    void compute() override {
-        Node &input = *getInput();
-        for (int i = 0; i < input.getColumn(); ++i) {
-            dtype sum = 0;
-            for (int j = 0; j < input.getRow(); ++j) {
-                sum += input.getVal()[i * input.getRow() + j];
-            }
-            val()[i] = sum;
-        }
+  virtual bool typeEqual(Node *other) override {
+    if (getNodeType() != other->getNodeType()) {
+      return false;
+    } else {
+      MatrixColSumNode &matrix = *static_cast<MatrixColSumNode *>(other);
+      return static_cast<MatrixNode *>(getInput())->getRow() ==
+          static_cast<MatrixNode *>(matrix.getInput())->getRow();
     }
+  }
 
-    void backward() override {
-        Node &input = *static_cast<MatrixNode *>(getInput());
-        for (int i = 0; i < input.getColumn(); ++i) {
-            for (int j = 0; j < input.getRow(); ++j) {
-                input.loss()[i * input.getRow() + j] += getLoss()[i];
-            }
-        }
-    }
+  virtual string typeSignature() const override {
+    return "MatrixColSum-" + to_string(static_cast<MatrixNode *>(getInput())->getRow());
+  }
 
-    virtual bool typeEqual(Node *other) override {
-        if (getNodeType() != other->getNodeType()) {
-            return false;
-        } else {
-            MatrixColSumNode &matrix = *static_cast<MatrixColSumNode *>(other);
-            return static_cast<MatrixNode *>(getInput())->getRow() ==
-                static_cast<MatrixNode *>(matrix.getInput())->getRow();
-        }
-    }
+  Executor *generate() override;
 
-    virtual string typeSignature() const override {
-        return "MatrixColSum-" + to_string(static_cast<MatrixNode *>(getInput())->getRow());
-    }
-
-    Executor *generate() override;
-
-protected:
-    virtual bool isDimLegal(const Node &input) const override {
-        const Node &matrix = static_cast<const Node &>(input);
-        return matrix.getColumn() == getDim();
-    }
+ protected:
+  virtual bool isDimLegal(const Node &input) const override {
+    const Node &matrix = static_cast<const Node &>(input);
+    return matrix.getColumn() == getDim();
+  }
 };
 
 #if USE_GPU
@@ -409,61 +400,57 @@ private:
 };
 #else
 class MatrixColSumExecutor : public Executor {
-    int calculateFLOPs() override {
-        return 0; // TODO
-    }
+  int calculateFLOPs() override {
+    return 0; // TODO
+  }
 };
 #endif
-
-Executor *MatrixColSumNode::generate() {
-    return new MatrixColSumExecutor;
-}
 
 class MatrixAndVectorMultiExecutor;
 
 class MatrixAndVectorMultiNode : public Node, public Poolable<MatrixAndVectorMultiNode> {
-public:
-    MatrixAndVectorMultiNode() : Node("MatrixAndVectorMulti") {}
+ public:
+  MatrixAndVectorMultiNode() : Node("MatrixAndVectorMulti") {}
 
-    void setNodeDim(int dim) override {
-        setDim(dim);
-    }
+  void setNodeDim(int dim) override {
+    setDim(dim);
+  }
 
-    void initNode(int dim) override {
-        init(dim);
-    }
+  void initNode(int dim) override {
+    init(dim);
+  }
 
-    void forward(Graph &graph, Node &matrix, Node &vec) {
-        matrix.addParent(this);
-        matrix_ = &matrix;
-        vec.addParent(this);
-        vector_ = &vec;
-        graph.addNode(this);
-    }
+  void forward(Graph &graph, Node &matrix, Node &vec) {
+    matrix.addParent(this);
+    matrix_ = &matrix;
+    vec.addParent(this);
+    vector_ = &vec;
+    graph.addNode(this);
+  }
 
-    void compute() override {
-        val().mat() = matrix_->valMat() * vector_->getVal().mat();
-    }
+  void compute() override {
+    val().mat() = matrix_->valMat() * vector_->getVal().mat();
+  }
 
-    void backward() override {
-        matrix_->gradMat() += getLoss().mat() * vector_->getVal().mat().transpose();
-        vector_->loss().mat() += matrix_->valMat().transpose() * getLoss().mat();
-    }
+  void backward() override {
+    matrix_->gradMat() += getLoss().mat() * vector_->getVal().mat().transpose();
+    vector_->loss().mat() += matrix_->valMat().transpose() * getLoss().mat();
+  }
 
-    Executor * generate() override;
+  Executor *generate() override;
 
-    bool typeEqual(Node *other) override {
-        return Node::typeEqual(other);
-    }
+  bool typeEqual(Node *other) override {
+    return Node::typeEqual(other);
+  }
 
-    string typeSignature() const override {
-        return Node::typeSignature();
-    }
+  string typeSignature() const override {
+    return Node::typeSignature();
+  }
 
-private:
-    Node *vector_ = nullptr;
-    Node *matrix_ = nullptr;
-    friend class MatrixAndVectorMultiExecutor;
+ private:
+  Node *vector_ = nullptr;
+  Node *matrix_ = nullptr;
+  friend class MatrixAndVectorMultiExecutor;
 };
 
 #if USE_GPU
@@ -529,44 +516,18 @@ private:
 };
 #else
 class MatrixAndVectorMultiExecutor : public Executor {
-public:
-    int calculateFLOPs() override {
-        return 0; // TODO
-    }
+ public:
+  int calculateFLOPs() override {
+    return 0; // TODO
+  }
 };
 #endif
 
-Executor * MatrixAndVectorMultiNode::generate() {
-    return new MatrixAndVectorMultiExecutor;
-}
-
 namespace n3ldg_plus {
 
-MatrixNode *concatToMatrix(Graph &graph, const vector<Node *> &inputs) {
-    int input_dim = inputs.front()->getDim();
-    MatrixConcatNode *node = MatrixConcatNode::newNode(inputs.size() * input_dim);
-    node->forward(graph, inputs);
-    return node;
-}
-
-MatrixNode *matrixPointwiseMultiply(Graph &graph, Node &matrix, Node &vec) {
-    MatrixAndVectorPointwiseMultiNode *node = MatrixAndVectorPointwiseMultiNode::newNode(
-            matrix.getDim());
-    node->forward(graph, matrix, vec);
-    return node;
-}
-
-Node *matrixColSum(Graph &graph, Node &input) {
-    MatrixColSumNode *node = MatrixColSumNode::newNode(input.getColumn());
-    node->forward(graph, input);
-    return node;
-}
-
-Node *matrixAndVectorMulti(Graph &graph, Node &matrix, Node &vec) {
-    MatrixAndVectorMultiNode *node = MatrixAndVectorMultiNode::newNode(matrix.getRow());
-    node->forward(graph, matrix, vec);
-    return node;
-}
-
+MatrixNode *concatToMatrix(Graph &graph, const vector<Node *> &inputs);
+MatrixNode *matrixPointwiseMultiply(Graph &graph, Node &matrix, Node &vec);
+Node *matrixColSum(Graph &graph, Node &input);
+Node *matrixAndVectorMulti(Graph &graph, Node &matrix, Node &vec);
 }
 #endif

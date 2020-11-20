@@ -15,7 +15,7 @@ using namespace Eigen;
 
 #if USE_FLOAT
 typedef float dtype;
-typedef Eigen::TensorMap<Eigen::Tensor<float, 1>>  Vec;
+typedef Eigen::TensorMap<Eigen::Tensor<float, 1>> Vec;
 typedef Eigen::Map<Matrix<float, Dynamic, Dynamic, ColMajor> > Mat;
 typedef MatrixXf MatrixXdtype;
 #else
@@ -26,14 +26,13 @@ typedef Matrix<double, Dynamic, Dynamic> MatrixXdtype;
 #endif
 
 enum ActivatedEnum {
-    EXP = 0,
-    TANH = 1,
-    SIGMOID = 2,
-    RELU = 3,
-    LEAKY_RELU = 4,
-    SELU = 5,
-    SQRT=6
+  EXP = 0,
+  TANH = 1,
+  SIGMOID = 2,
+  RELU = 3,
+  LEAKY_RELU = 4,
+  SELU = 5,
+  SQRT = 6
 };
-
 
 #endif

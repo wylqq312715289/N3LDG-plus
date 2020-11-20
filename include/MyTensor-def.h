@@ -16,98 +16,97 @@ using namespace Eigen;
 namespace n3ldg_cpu {
 
 struct Tensor1D : public N3LDGSerializable {
-    dtype *v = nullptr;
-    int dim = 0;
+  dtype *v = nullptr;
+  int dim = 0;
 
-    Tensor1D() = default;
+  Tensor1D() = default;
 
-    virtual ~Tensor1D();
+  virtual ~Tensor1D();
 
-    virtual void init(int ndim);
+  virtual void init(int ndim);
 
-    void zero();
+  void zero();
 
-    std::string toString() const;
+  std::string toString() const;
 
-    const Mat mat() const;
+  const Mat mat() const;
 
-    Mat mat();
+  Mat mat();
 
-    const Mat tmat() const;
+  const Mat tmat() const;
 
-    Mat tmat();
+  Mat tmat();
 
-    const Vec vec() const;
+  const Vec vec() const;
 
-    Vec vec();
+  Vec vec();
 
-    dtype& operator[](const int i);
+  dtype &operator[](const int i);
 
-    const dtype& operator[](const int i) const;
+  const dtype &operator[](const int i) const;
 
-    Tensor1D& operator=(const dtype &a);
+  Tensor1D &operator=(const dtype &a);
 
-    Tensor1D& operator=(const std::vector<dtype> &a);
+  Tensor1D &operator=(const std::vector<dtype> &a);
 
-    Tensor1D& operator=(const Tensor1D &a);
+  Tensor1D &operator=(const Tensor1D &a);
 
-    virtual void random(dtype bound);
+  virtual void random(dtype bound);
 
-    virtual Json::Value toJson() const;
+  virtual Json::Value toJson() const;
 
-    virtual void fromJson(const Json::Value &json);
+  virtual void fromJson(const Json::Value &json);
 
-    virtual void print() const;
+  virtual void print() const;
 
-    virtual std::vector<dtype> toCpu() const;
+  virtual std::vector<dtype> toCpu() const;
 
-    virtual void checkIsNumber() const;
+  virtual void checkIsNumber() const;
 };
 
 struct Tensor2D : public N3LDGSerializable {
-    dtype *v;
-    int col, row, size;
+  dtype *v;
+  int col, row, size;
 
-    Tensor2D();
+  Tensor2D();
 
-    virtual ~Tensor2D();
+  virtual ~Tensor2D();
 
-    virtual void init(int nrow, int ncol);
+  virtual void init(int nrow, int ncol);
 
-    virtual void print() const;
+  virtual void print() const;
 
-    std::string toString() const;
+  std::string toString() const;
 
-    void zero();
+  void zero();
 
-    const Mat mat() const;
+  const Mat mat() const;
 
-    Mat mat();
+  Mat mat();
 
-    const Vec vec() const;
+  const Vec vec() const;
 
-    Vec vec();
+  Vec vec();
 
+  dtype *operator[](const int icol);
 
-    dtype* operator[](const int icol);
+  const dtype *operator[](const int icol) const;
 
-    const dtype* operator[](const int icol) const;
+  virtual void assignAll(dtype a);
 
-    virtual void assignAll(dtype a);
+  Tensor2D &operator=(const std::vector<dtype> &a);
 
-    Tensor2D& operator=(const std::vector<dtype> &a);
+  Tensor2D &operator=(const std::vector<std::vector<dtype> > &a);
 
-    Tensor2D& operator=(const std::vector<std::vector<dtype> > &a);
+  Tensor2D &operator=(const Tensor2D &a);
 
-    Tensor2D& operator=(const Tensor2D &a);
+  void random(dtype bound);
 
-    void random(dtype bound);
+  void norm2one(dtype norm = 1.0);
 
-    void norm2one(dtype norm = 1.0);
+  virtual Json::Value toJson() const;
 
-    virtual Json::Value toJson() const;
-
-    virtual void fromJson(const Json::Value &json);
+  virtual void fromJson(const Json::Value &json);
 };
 
 }

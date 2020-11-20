@@ -19,16 +19,16 @@ using namespace Eigen;
 using std::vector;
 
 class BucketNode : public Node, public Poolable<BucketNode> {
-public:
-    BucketNode() : Node("bucket") {}
+ public:
+  BucketNode() : Node("bucket") {}
 
-    void initNode(int dim) override {
-        init(dim);
-    }
+  void initNode(int dim) override {
+    init(dim);
+  }
 
-    void setNodeDim(int dim) override {
-        setDim(dim);
-    }
+  void setNodeDim(int dim) override {
+    setDim(dim);
+  }
 
 //    virtual void init(int ndim) override {
 //#if USE_GPU
@@ -38,108 +38,93 @@ public:
 //#endif
 //    }
 
-    void forward(Graph &graph, const vector<dtype> &input) {
-        if (input.size() != getDim()) {
-            cerr << boost::format("input size %1% is not equal to dim %2%") % input.size() %
-                getDim() << endl;
-            abort();
-        }
-        input_ = input;
-        graph.addNode(this);
+  void forward(Graph &graph, const vector<dtype> &input) {
+    if (input.size() != getDim()) {
+      cerr << boost::format("input size %1% is not equal to dim %2%") % input.size() %
+          getDim() << endl;
+      abort();
     }
+    input_ = input;
+    graph.addNode(this);
+  }
 
-    void forward(Graph &graph, dtype v) {
-        vector<dtype> input;
-        for (int i = 0; i < getDim(); ++i) {
-            input.push_back(v);
-        }
-        forward(graph, input);
+  void forward(Graph &graph, dtype v) {
+    vector<dtype> input;
+    for (int i = 0; i < getDim(); ++i) {
+      input.push_back(v);
     }
+    forward(graph, input);
+  }
 
-    void forward(Graph &graph) {
-        forward(graph, 0);
-    }
+  void forward(Graph &graph) {
+    forward(graph, 0);
+  }
 
-    void compute() override {
-        abort();
-    }
+  void compute() override {
+    abort();
+  }
 
-    void backward() override {
-        abort();
-    }
+  void backward() override {
+    abort();
+  }
 
-    PExecutor generate() override;
+  PExecutor generate() override;
 
-protected:
+ protected:
 
-private:
-    vector<dtype> input_;
-    friend class BucketExecutor;
+ private:
+  vector<dtype> input_;
+  friend class BucketExecutor;
 };
 
 namespace n3ldg_plus {
 
-Node *bucket(Graph &graph, int dim, float v) {
-    BucketNode *bucket = BucketNode::newNode(dim);
-    bucket->forward(graph, v);
-    return bucket;
-}
+Node *bucket(Graph &graph, int dim, float v);
 
-Node *bucket(Graph &graph, const vector<float> &v) {
-    BucketNode *bucket = BucketNode::newNode(v.size());
-    bucket->forward(graph, v);
-    return bucket;
-}
-
+Node *bucket(Graph &graph, const vector<float> &v);
 }
 
 class BucketExecutor : public Executor {
-public:
+ public:
 #if !USE_GPU
-    int calculateFLOPs() override {
-        return 0;
-    }
+  int calculateFLOPs() override {
+    return 0;
+  }
 #endif
 
-    void forward() override {
+  void forward() override {
 #if USE_GPU
-        int count = batch.size();
-        vector<dtype*> ys;
-        vector<dtype> cpu_x;
-        cpu_x.reserve(getDim() * count);
-        for (Node *node : batch) {
-            BucketNode *bucket = static_cast<BucketNode*>(node);
-            ys.push_back(bucket->val().value);
-            for (int i = 0; i < getDim(); ++i) {
-                cpu_x.push_back(bucket->input_.at(i));
-            }
+    int count = batch.size();
+    vector<dtype*> ys;
+    vector<dtype> cpu_x;
+    cpu_x.reserve(getDim() * count);
+    for (Node *node : batch) {
+        BucketNode *bucket = static_cast<BucketNode*>(node);
+        ys.push_back(bucket->val().value);
+        for (int i = 0; i < getDim(); ++i) {
+            cpu_x.push_back(bucket->input_.at(i));
         }
-        n3ldg_cuda::BucketForward(cpu_x, count, getDim(), ys);
+    }
+    n3ldg_cuda::BucketForward(cpu_x, count, getDim(), ys);
 #if TEST_CUDA
-        for (Node *node : batch) {
-            BucketNode *bucket = static_cast<BucketNode*>(node);
-            dtype *v = node->val().v;
-            for (int i = 0; i < getDim(); ++i) {
-                v[i] = bucket->input_.at(i);
-            }
-            n3ldg_cuda::Assert(node->val().verify("bucket forward"));
+    for (Node *node : batch) {
+        BucketNode *bucket = static_cast<BucketNode*>(node);
+        dtype *v = node->val().v;
+        for (int i = 0; i < getDim(); ++i) {
+            v[i] = bucket->input_.at(i);
         }
+        n3ldg_cuda::Assert(node->val().verify("bucket forward"));
+    }
 #endif
 #else
-        for (Node *node : batch) {
-            BucketNode *bucket = static_cast<BucketNode*>(node);
-            node->val() = bucket->input_;
-        }
-#endif
+    for (Node *node : batch) {
+      BucketNode *bucket = static_cast<BucketNode *>(node);
+      node->val() = bucket->input_;
     }
+#endif
+  }
 
-    void backward() override {}
+  void backward() override {}
 };
-
-PExecutor BucketNode::generate() {
-    BucketExecutor* exec = new BucketExecutor();
-    exec->batch.push_back(this);
-    return exec;
-}
 
 #endif

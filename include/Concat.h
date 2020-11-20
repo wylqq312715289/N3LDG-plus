@@ -19,98 +19,98 @@
 #include "profiler.h"
 
 class ConcatNode : public Node, public Poolable<ConcatNode> {
-public:
-    vector<int> inDims;
-    vector<PNode> ins;
+ public:
+  vector<int> inDims;
+  vector<PNode> ins;
 
-    ConcatNode() : Node("concat") {}
+  ConcatNode() : Node("concat") {}
 
-    void initNode(int dim) override {
-        init(dim);
+  void initNode(int dim) override {
+    init(dim);
+  }
+
+  void setNodeDim(int dim) override {
+    setDim(dim);
+  }
+
+  void clear() override {
+    inDims.clear();
+    ins.clear();
+    Node::clear();
+  }
+
+  void forward(Graph &cg, const vector<PNode> &x) {
+    if (x.size() == 0) {
+      std::cerr << "empty inputs for concat" << std::endl;
+      abort();
     }
 
-    void setNodeDim(int dim) override {
-        setDim(dim);
+    for (int i = 0; i < x.size(); i++) {
+      ins.push_back(x[i]);
     }
 
-    void clear() override {
-        inDims.clear();
-        ins.clear();
-        Node::clear();
+    int nSize = ins.size();
+    for (int i = 0; i < nSize; ++i) {
+      ins[i]->addParent(this);
     }
-
-    void forward(Graph &cg, const vector<PNode>& x) {
-        if (x.size() == 0) {
-            std::cerr << "empty inputs for concat" << std::endl;
-            abort();
-        }
-
-        for (int i = 0; i < x.size(); i++) {
-            ins.push_back(x[i]);
-        }
-
-        int nSize = ins.size();
-        for (int i = 0; i < nSize; ++i) {
-            ins[i]->addParent(this);
-        }
-        int curDim = 0;
-        for (int i = 0; i < nSize; ++i) {
-            inDims.push_back(ins.at(i)->getDim());
-            curDim += inDims[i];
-        }
-        if (curDim != getDim()) {
-            std::cerr << "input dim size not match" << curDim << "\t" << getDim() << std::endl;
-            abort();
-        }
-        cg.addNode(this);
+    int curDim = 0;
+    for (int i = 0; i < nSize; ++i) {
+      inDims.push_back(ins.at(i)->getDim());
+      curDim += inDims[i];
     }
-
-    PExecutor generate() override;
-
-    bool typeEqual(PNode other) override {
-        if (!Node::typeEqual(other)) {
-            return false;
-        }
-        ConcatNode *o = static_cast<ConcatNode*>(other);
-        if (inDims.size() != o->inDims.size()) {
-            return false;
-        }
-        for (int i = 0; i < inDims.size(); ++i) {
-            if (inDims.at(i) != o->inDims.at(i)) {
-                return false;
-            }
-        }
-        return true;
+    if (curDim != getDim()) {
+      std::cerr << "input dim size not match" << curDim << "\t" << getDim() << std::endl;
+      abort();
     }
+    cg.addNode(this);
+  }
 
-    string typeSignature() const override {
-        string hash_code = Node::typeSignature() + "-" + to_string(inDims.size());
-        for (int dim : inDims) {
-            hash_code += "-" + to_string(dim);
-        }
-        return hash_code;
-    }
+  PExecutor generate() override;
 
-    void compute() override {
-        int nSize = ins.size();
-        int offset = 0;
-        for (int i = 0; i < nSize; ++i) {
-            memcpy(val().v + offset, ins.at(i)->val().v,
-                    inDims.at(i) * sizeof(dtype));
-            offset += inDims[i];
-        }
+  bool typeEqual(PNode other) override {
+    if (!Node::typeEqual(other)) {
+      return false;
     }
+    ConcatNode *o = static_cast<ConcatNode *>(other);
+    if (inDims.size() != o->inDims.size()) {
+      return false;
+    }
+    for (int i = 0; i < inDims.size(); ++i) {
+      if (inDims.at(i) != o->inDims.at(i)) {
+        return false;
+      }
+    }
+    return true;
+  }
 
-    void backward() override {
-        int nSize = ins.size();
-        int offset = 0;
-        for (int i = 0; i < nSize; ++i) {
-            for (int idx = 0; idx < inDims[i]; idx++) {
-                ins[i]->loss()[idx] += loss()[offset + idx];
-            }
-            offset += inDims[i];
-        }
+  string typeSignature() const override {
+    string hash_code = Node::typeSignature() + "-" + to_string(inDims.size());
+    for (int dim : inDims) {
+      hash_code += "-" + to_string(dim);
     }
+    return hash_code;
+  }
+
+  void compute() override {
+    int nSize = ins.size();
+    int offset = 0;
+    for (int i = 0; i < nSize; ++i) {
+      memcpy(val().v + offset, ins.at(i)->val().v,
+             inDims.at(i) * sizeof(dtype));
+      offset += inDims[i];
+    }
+  }
+
+  void backward() override {
+    int nSize = ins.size();
+    int offset = 0;
+    for (int i = 0; i < nSize; ++i) {
+      for (int idx = 0; idx < inDims[i]; idx++) {
+        ins[i]->loss()[idx] += loss()[offset + idx];
+      }
+      offset += inDims[i];
+    }
+  }
 };
 
 #if USE_GPU
@@ -174,90 +174,77 @@ public:
 };
 #else
 class ConcatExecutor : public Executor {
-public:
-    int calculateFLOPs() override {
-        return 0;
-    }
+ public:
+  int calculateFLOPs() override {
+    return 0;
+  }
 
-    int calculateActivations() override {
-        return 0;
-    }
+  int calculateActivations() override {
+    return 0;
+  }
 };
 #endif
 
-PExecutor ConcatNode::generate() {
-    ConcatExecutor* exec = new ConcatExecutor();
-    exec->batch.push_back(this);
-#if USE_GPU
-    exec->inCount = this->ins.size();
-    exec->outDim = 0;
-    for (int d : inDims) {
-        exec->outDim += d;
-    }
-#endif
-    return exec;
-}
-
 class ScalarConcatNode : public Node, public Poolable<ScalarConcatNode> {
-public:
-    ScalarConcatNode() : Node("scalar_concat") {}
+ public:
+  ScalarConcatNode() : Node("scalar_concat") {}
 
-    void setNodeDim(int dim) override {
-        setDim(dim);
+  void setNodeDim(int dim) override {
+    setDim(dim);
+  }
+
+  void initNode(int dim) override {
+    init(dim);
+  }
+
+  void forward(Graph &graph, const vector<Node *> &ins) {
+    if (ins.size() != getDim()) {
+      cerr << "ScalarConcatNode forward - ins size error" << endl;
+      cerr << boost::format("ins size:%1% dim:%2%") % ins.size() % getDim() << endl;
+      abort();
     }
 
-    void initNode(int dim) override {
-        init(dim);
+    ins_ = ins;
+    for (Node *n : ins) {
+      if (n->getDim() != 1) {
+        cerr << "ScalarConcatNode forward - non scalar found" << endl;
+        abort();
+      }
+      n->addParent(this);
     }
+    graph.addNode(this);
+  }
 
-    void forward(Graph &graph, const vector<Node *> &ins) {
-        if (ins.size() != getDim()) {
-            cerr << "ScalarConcatNode forward - ins size error" << endl;
-            cerr << boost::format("ins size:%1% dim:%2%") % ins.size() % getDim() << endl;
-            abort();
-        }
+  Executor *generate() override;
 
-        ins_ = ins;
-        for (Node *n : ins) {
-            if (n->getDim() != 1) {
-                cerr << "ScalarConcatNode forward - non scalar found" << endl;
-                abort();
-            }
-            n->addParent(this);
-        }
-        graph.addNode(this);
+  void compute() override {
+    int i = 0;
+    for (Node *in : ins_) {
+      val()[i++] = in->getVal()[0];
     }
+  }
 
-    Executor *generate() override;
-
-    void compute() override {
-        int i = 0;
-        for (Node *in : ins_) {
-            val()[i++] = in->getVal()[0];
-        }
+  void backward() override {
+    int i = 0;
+    for (Node *in : ins_) {
+      in->loss()[0] += getLoss()[i++];
     }
+  }
 
-    void backward() override {
-        int i = 0;
-        for (Node *in : ins_) {
-            in->loss()[0] += getLoss()[i++];
-        }
-    }
+  const vector<Node *> ins() const {
+    return ins_;
+  }
 
-    const vector<Node *> ins() const {
-        return ins_;
-    }
+  bool typeEqual(Node *other) override {
+    return getNodeType() == other->getNodeType();
+  }
 
-    bool typeEqual(Node *other) override {
-        return getNodeType() == other->getNodeType();
-    }
+  string typeSignature() const override {
+    return getNodeType();
+  }
 
-    string typeSignature() const override {
-        return getNodeType();
-    }
-
-private:
-    vector<Node *> ins_;
+ private:
+  vector<Node *> ins_;
 };
 
 #if USE_GPU
@@ -329,34 +316,18 @@ private:
 };
 #else
 class ScalarConcatExecutor : public Executor {
-public:
-    int calculateFLOPs() override {
-        return 0;
-    }
+ public:
+  int calculateFLOPs() override {
+    return 0;
+  }
 };
 #endif
 
-Executor *ScalarConcatNode::generate() {
-    return new ScalarConcatExecutor;
-}
-
 namespace n3ldg_plus {
 
-Node *concat(Graph &graph, vector<Node*> inputs) {
-    int dim = 0;
-    for (Node *in : inputs) {
-        dim += in->getDim();
-    }
-    ConcatNode *concat = ConcatNode::newNode(dim);
-    concat->forward(graph, inputs);
-    return concat;
-}
+Node *concat(Graph &graph, vector<Node *> inputs);
 
-Node *scalarConcat(Graph &graph, vector<Node *> inputs) {
-    ScalarConcatNode *concat = ScalarConcatNode::newNode(inputs.size());
-    concat->forward(graph, inputs);
-    return concat;
-}
+Node *scalarConcat(Graph &graph, vector<Node *> inputs);
 
 }
 

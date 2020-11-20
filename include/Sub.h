@@ -7,61 +7,57 @@
 #include "Graph.h"
 
 class SubNode : public Node, public Poolable<SubNode> {
-public:
-    SubNode() : Node("sub") {}
+ public:
+  SubNode() : Node("sub") {}
 
-    void initNode(int dim) override {
-        init(dim);
+  void initNode(int dim) override {
+    init(dim);
+  }
+
+  void setNodeDim(int dim) override {
+    setDim(dim);
+  }
+
+  bool typeEqual(Node *other) override {
+    return getNodeType() == other->getNodeType();
+  }
+
+  string typeSignature() const override {
+    return getNodeType();
+  }
+
+  void forward(Graph &graph, Node &minuend, Node &subtrahend) {
+    if (getDim() != minuend.getDim() || getDim() != subtrahend.getDim()) {
+      cerr << boost::format("dim:%1% minuend:%2% subtrahend:%3%") % getDim() %
+          minuend.getDim() % subtrahend.getDim() << endl;
+      abort();
     }
+    minuend_ = &minuend;
+    subtrahend_ = &subtrahend;
+    vector<Node *> ins = {minuend_, subtrahend_};
+    afterForward(graph, ins);
+  }
 
-    void setNodeDim(int dim) override {
-        setDim(dim);
-    }
+  void compute() override {
+    val().vec() = minuend_->getVal().vec() - subtrahend_->getVal().vec();
+  }
 
-    bool typeEqual(Node* other) override {
-        return getNodeType() == other->getNodeType();
-    }
+  void backward() override {
+    minuend_->loss().vec() += loss().vec();
+    subtrahend_->loss().vec() -= loss().vec();
+  }
 
-    string typeSignature() const override {
-        return getNodeType();
-    }
+  PExecutor generate() override;
+ private:
+  Node *minuend_;
+  Node *subtrahend_;
 
-    void forward(Graph &graph, Node &minuend, Node &subtrahend) {
-        if (getDim() != minuend.getDim() || getDim() != subtrahend.getDim()) {
-            cerr << boost::format("dim:%1% minuend:%2% subtrahend:%3%") % getDim() %
-                minuend.getDim() % subtrahend.getDim() << endl;
-            abort();
-        }
-        minuend_ = &minuend;
-        subtrahend_ = &subtrahend;
-        vector<Node*> ins = {minuend_, subtrahend_};
-        afterForward(graph, ins);
-    }
-
-    void compute() override {
-        val().vec() = minuend_->getVal().vec() - subtrahend_->getVal().vec();
-    }
-
-    void backward() override {
-        minuend_->loss().vec() += loss().vec();
-        subtrahend_->loss().vec() -= loss().vec();
-    }
-
-    PExecutor generate() override;
-private:
-    Node *minuend_;
-    Node *subtrahend_;
-
-    friend class SubExecutor;
+  friend class SubExecutor;
 };
 
 namespace n3ldg_plus {
 
-Node *sub(Graph &graph, Node &minuend, Node &subtrahend) {
-    SubNode *result = SubNode::newNode(minuend.getDim());
-    result->forward(graph, minuend, subtrahend);
-    return result;
-}
+Node *sub(Graph &graph, Node &minuend, Node &subtrahend);
 
 }
 
@@ -119,15 +115,10 @@ private:
 };
 #else
 class SubExecutor : public Executor {
-    int calculateFLOPs() override {
-        return defaultFLOPs();
-    }
+  int calculateFLOPs() override {
+    return defaultFLOPs();
+  }
 };
 #endif
-
-Executor *SubNode::generate() {
-    SubExecutor * executor = new SubExecutor();
-    return executor;
-}
 
 #endif

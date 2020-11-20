@@ -24,321 +24,320 @@ using boost::format;
 template<typename ParamType>
 class LookupTable : public N3LDGSerializable, public TunableCombination<BaseParam>
 #if USE_GPU
-, public TransferableComponents
+  , public TransferableComponents
 #endif
 {
-public:
-    Alphabet elems;
-    ParamType E;
-    bool bFineTune;
-    int nDim;
-    int nVSize;
-    int nUNKId;
-    bool inited = false;
+ public:
+  Alphabet elems;
+  ParamType E;
+  bool bFineTune;
+  int nDim;
+  int nVSize;
+  int nUNKId;
+  bool inited = false;
 
-    LookupTable(const string &name = "embedding") : E(name) {
-        nVSize = 0;
-        nDim = 0;
-        nUNKId = -1;
-        bFineTune = false;
-    }
+  LookupTable(const string &name = "embedding") : E(name) {
+    nVSize = 0;
+    nDim = 0;
+    nUNKId = -1;
+    bFineTune = false;
+  }
 
 #if USE_GPU
-    std::vector<n3ldg_cuda::Transferable *> transferablePtrs() override {
-        return {&E};
-    }
+  std::vector<n3ldg_cuda::Transferable *> transferablePtrs() override {
+      return {&E};
+  }
 
-    virtual std::string name() const {
-        return "LookupTable";
-    }
+  virtual std::string name() const {
+      return "LookupTable";
+  }
 #endif
 
-    void init(const Alphabet &alpha, int dim, bool fineTune = true) {
-        if (!inited) {
-            elems = alpha;
-            nVSize = elems.size();
-            nUNKId = elems.from_string(unknownkey);
-            initWeights(dim, fineTune);
-            inited = true;
-        }
+  void init(const Alphabet &alpha, int dim, bool fineTune = true) {
+    if (!inited) {
+      elems = alpha;
+      nVSize = elems.size();
+      nUNKId = elems.from_string(unknownkey);
+      initWeights(dim, fineTune);
+      inited = true;
     }
+  }
 
-    //initialization by pre-trained embeddings
-    void init(const Alphabet &alpha, const string& inFile, bool fineTune = true, dtype norm = -1) {
-        elems = alpha;
-        nVSize = elems.size();
-        nUNKId = elems.from_string(unknownkey);
-        initWeights(inFile, fineTune, norm);
-    }
+  //initialization by pre-trained embeddings
+  void init(const Alphabet &alpha, const string &inFile, bool fineTune = true, dtype norm = -1) {
+    elems = alpha;
+    nVSize = elems.size();
+    nUNKId = elems.from_string(unknownkey);
+    initWeights(inFile, fineTune, norm);
+  }
 
-    void initWeights(int dim, bool tune) {
-        if (dim <=0 || nVSize == 0 || (nVSize == 1 && nUNKId >= 0)) {
-            std::cerr << boost::format("LookupTable initWeights - dim:%1% size:%2%") % dim % nVSize
+  void initWeights(int dim, bool tune) {
+    if (dim <= 0 || nVSize == 0 || (nVSize == 1 && nUNKId >= 0)) {
+      std::cerr << boost::format("LookupTable initWeights - dim:%1% size:%2%") % dim % nVSize
                 << endl;
-            std::cerr << "please check the alphabet" << std::endl;
-            abort();
-        }
-        nDim = dim;
-        cout << format("initWeights dim:%1% vocabulary_size:%2%\n") % nDim % nVSize;
-        E.init(nDim, nVSize);
-        E.val.random(sqrt(1.0 / nDim));
-        //E.val.norm2one();
-        bFineTune = tune;
+      std::cerr << "please check the alphabet" << std::endl;
+      abort();
+    }
+    nDim = dim;
+    cout << format("initWeights dim:%1% vocabulary_size:%2%\n") % nDim % nVSize;
+    E.init(nDim, nVSize);
+    E.val.random(sqrt(1.0 / nDim));
+    //E.val.norm2one();
+    bFineTune = tune;
 #if USE_GPU
-        E.val.copyFromHostToDevice();
+    E.val.copyFromHostToDevice();
 #endif
+  }
+
+  // default should be fineTune, just for initialization
+  void initWeights(const string &inFile, bool tune, dtype norm = -1) {
+    if (nVSize == 0 || (nVSize == 1 && nUNKId >= 0)) {
+      cout << "nVSize:" << nVSize << " nUNKId:" << nUNKId << endl;
+      std::cerr << "please check the alphabet" << std::endl;
+      abort();
     }
 
-    // default should be fineTune, just for initialization
-    void initWeights(const string& inFile, bool tune, dtype norm = -1) {
-        if (nVSize == 0 || (nVSize == 1 && nUNKId >= 0)) {
-            cout << "nVSize:" << nVSize << " nUNKId:" << nUNKId << endl;
-            std::cerr << "please check the alphabet" << std::endl;
-            abort();
+    ifstream inf;
+    inf.open(inFile.c_str());
+
+    if (!inf.is_open()) {
+      std::cerr << "please check the input file" << std::endl;
+      abort();
+    }
+
+    string strLine, curWord;
+    vector<string> sLines;
+    while (1) {
+      if (!my_getline(inf, strLine)) {
+        break;
+      }
+      if (!strLine.empty()) {
+        sLines.push_back(strLine);
+      }
+    }
+    inf.close();
+    if (sLines.size() == 0) {
+      cerr << "sLines size is 0" << endl;
+      abort();
+    }
+
+    //find the first line, decide the wordDim;
+    vector<string>::iterator it = sLines.begin();
+    sLines.erase(it);
+    vector<string> vecInfo;
+    split_bychar(sLines[0], vecInfo, ' ');
+    nDim = vecInfo.size() - 1;
+
+    cout << format("nDim:%1% nVSize:%2%") % nDim % nVSize << endl;
+    E.init(nDim, nVSize);
+
+    std::cout << "word embedding dim is " << nDim << std::endl;
+
+    bool bHasUnknown = false;
+    unordered_set<int> indexers;
+    NRVec<dtype> sum(nDim);
+    sum = 0.0;
+    int count = 0;
+    for (int idx = 0; idx < sLines.size(); idx++) {
+      split_bychar(sLines[idx], vecInfo, ' ');
+      if (vecInfo.size() != nDim + 1) {
+        std::cout << "error embedding file" << std::endl;
+      }
+      curWord = vecInfo[0];
+      if (elems.find_string(curWord)) {
+        int wordId = elems.insert_string(curWord);
+        count++;
+        if (nUNKId == wordId) {
+          bHasUnknown = true;
         }
+        indexers.insert(wordId);
 
-        ifstream inf;
-        inf.open(inFile.c_str());
-
-        if (!inf.is_open()) {
-            std::cerr << "please check the input file" << std::endl;
-            abort();
+        for (int idy = 0; idy < nDim; idy++) {
+          dtype curValue = atof(vecInfo[idy + 1].c_str());
+          sum[idy] += curValue;
+          E.val[wordId][idy] += curValue;
         }
+      }
+    }
 
-        string strLine, curWord;
-        vector<string> sLines;
-        while (1) {
-            if (!my_getline(inf, strLine)) {
-                break;
-            }
-            if (!strLine.empty()) {
-                sLines.push_back(strLine);
-            }
+    if (count == 0) {
+      E.val.random(sqrt(3.0 / nDim));
+      std::cout << "find no overlapped lexicons in the embedding file" << std::endl;
+      abort();
+    }
+
+    if (nUNKId >= 0 && !bHasUnknown) {
+      for (int idx = 0; idx < nDim; idx++) {
+        E.val[nUNKId][idx] = sum[idx] / (count + 1);
+      }
+      indexers.insert(nUNKId);
+      count++;
+      std::cout << unknownkey << " not found, using averaged value to initialize." << std::endl;
+    }
+
+    int oovWords = 0;
+    for (int id = 0; id < nVSize; id++) {
+      if (indexers.find(id) == indexers.end()) {
+        oovWords++;
+        for (int idy = 0; idy < nDim; idy++) {
+          E.val[id][idy] = nUNKId >= 0 ? E.val[nUNKId][idy] : sum[idy] / (count + 1);
         }
-        inf.close();
-        if (sLines.size() == 0) {
-            cerr << "sLines size is 0" << endl;
-            abort();
-        }
+      }
+    }
 
-        //find the first line, decide the wordDim;
-		vector<string>::iterator it = sLines.begin();
-		sLines.erase(it);
-        vector<string> vecInfo;
-        split_bychar(sLines[0], vecInfo, ' ');
-        nDim = vecInfo.size() - 1;
-
-        cout << format("nDim:%1% nVSize:%2%") % nDim % nVSize << endl;
-        E.init(nDim, nVSize);
-
-        std::cout << "word embedding dim is " << nDim << std::endl;
-
-        bool bHasUnknown = false;
-        unordered_set<int> indexers;
-        NRVec<dtype> sum(nDim);
-        sum = 0.0;
-        int count = 0;
-        for (int idx = 0; idx < sLines.size(); idx++) {
-            split_bychar(sLines[idx], vecInfo, ' ');
-            if (vecInfo.size() != nDim + 1) {
-                std::cout << "error embedding file" << std::endl;
-            }
-            curWord = vecInfo[0];
-            if (elems.find_string(curWord)) {
-                int wordId = elems.insert_string(curWord);
-                count++;
-                if (nUNKId == wordId) {
-                    bHasUnknown = true;
-                }
-                indexers.insert(wordId);
-
-                for (int idy = 0; idy < nDim; idy++) {
-                    dtype curValue = atof(vecInfo[idy + 1].c_str());
-                    sum[idy] += curValue;
-                    E.val[wordId][idy] += curValue;
-                }
-            }
-        }
-
-        if (count == 0) {
-            E.val.random(sqrt(3.0 / nDim));
-            std::cout << "find no overlapped lexicons in the embedding file" << std::endl;
-            abort();
-        }
-
-        if (nUNKId >= 0 && !bHasUnknown) {
-            for (int idx = 0; idx < nDim; idx++) {
-                E.val[nUNKId][idx] = sum[idx] / (count + 1);
-            }
-            indexers.insert(nUNKId);
-            count++;
-            std::cout << unknownkey << " not found, using averaged value to initialize." << std::endl;
-        }
-
-
-        int oovWords = 0;
-        for (int id = 0; id < nVSize; id++) {
-            if (indexers.find(id) == indexers.end()) {
-                oovWords++;
-                for (int idy = 0; idy < nDim; idy++) {
-                    E.val[id][idy] = nUNKId >= 0 ? E.val[nUNKId][idy] : sum[idy] / (count + 1);
-                }
-            }
-        }
-
-
-        std::cout << "OOV num is " << oovWords << ", total num is " << nVSize << ", embedding oov ratio is " << oovWords * 1.0 / nVSize << std::endl;
-        std::cout << "unknown id" << nUNKId << std::endl;
-        bFineTune = tune;
-        if (norm > 0) {
-            E.val.norm2one(norm);
-        }
+    std::cout << "OOV num is " << oovWords << ", total num is " << nVSize << ", embedding oov ratio is "
+              << oovWords * 1.0 / nVSize << std::endl;
+    std::cout << "unknown id" << nUNKId << std::endl;
+    bFineTune = tune;
+    if (norm > 0) {
+      E.val.norm2one(norm);
+    }
 #if USE_GPU
-        E.val.copyFromHostToDevice();
+    E.val.copyFromHostToDevice();
 #endif
-    }
+  }
 
-    std::vector<Tunable<BaseParam>*> tunableComponents() override {
-        if (bFineTune) {
-            return {&E};
-        } else {
-            return {};
-        }
+  std::vector<Tunable<BaseParam> *> tunableComponents() override {
+    if (bFineTune) {
+      return {&E};
+    } else {
+      return {};
     }
+  }
 
-    int getElemId(const string& strFeat) const {
-        return elems.find_string(strFeat) ? elems.from_string(strFeat) : nUNKId;
-    }
+  int getElemId(const string &strFeat) const {
+    return elems.find_string(strFeat) ? elems.from_string(strFeat) : nUNKId;
+  }
 
-    bool findElemId(const string &str) const {
-        return elems.find_string(str);
-    }
+  bool findElemId(const string &str) const {
+    return elems.find_string(str);
+  }
 
-    Json::Value toJson() const override {
-        Json::Value json;
-        json["e"] = E.toJson();
-        json["finetune"] = bFineTune;
-        json["dim"] = nDim;
-        json["vocabulary_size"] = nVSize;
-        json["unkown_id"] = nUNKId;
-        json["word_ids"] = elems.toJson();
-        return json;
-    }
+  Json::Value toJson() const override {
+    Json::Value json;
+    json["e"] = E.toJson();
+    json["finetune"] = bFineTune;
+    json["dim"] = nDim;
+    json["vocabulary_size"] = nVSize;
+    json["unkown_id"] = nUNKId;
+    json["word_ids"] = elems.toJson();
+    return json;
+  }
 
-    void fromJson(const Json::Value &json) override {
-        bFineTune = json["finetune"].asBool();
-        nDim = json["dim"].asInt();
-        nVSize = json["vocabulary_size"].asInt();
-        nUNKId = json["unkown_id"].asInt();
-        elems.fromJson(json["word_ids"]);
-        E.init(nDim, nVSize);
-        E.fromJson(json["e"]);
-    }
+  void fromJson(const Json::Value &json) override {
+    bFineTune = json["finetune"].asBool();
+    nDim = json["dim"].asInt();
+    nVSize = json["vocabulary_size"].asInt();
+    nUNKId = json["unkown_id"].asInt();
+    elems.fromJson(json["word_ids"]);
+    E.init(nDim, nVSize);
+    E.fromJson(json["e"]);
+  }
 };
 
-template <typename ParamType>
+template<typename ParamType>
 class LookupNode : public Node, public Poolable<LookupNode<ParamType>> {
-public:
-    ParamType* param;
-    int xid;
-    bool should_backward = true;
+ public:
+  ParamType *param;
+  int xid;
+  bool should_backward = true;
 
-    LookupNode() : Node("lookup") {
-        xid = -1;
-        param = NULL;
+  LookupNode() : Node("lookup") {
+    xid = -1;
+    param = NULL;
+  }
+
+  void setNodeDim(int dim) override {
+    setDim(dim);
+  }
+
+  void initNode(int dim) override {
+    init(dim);
+  }
+
+  void setParam(LookupTable<ParamType> *paramInit) {
+    param = paramInit;
+  }
+
+  void setParam(ParamType &table) {
+    param = &table;
+  }
+
+  void forward(Graph &graph, int &exid) {
+    xid = exid;
+    graph.addNode(this);
+  }
+
+  PExecutor generate() override;
+
+  // better to rewrite for deep understanding
+  bool typeEqual(PNode other) override {
+    bool result = Node::typeEqual(other);
+    if (!result) return false;
+
+    LookupNode *conv_other = (LookupNode *) other;
+    if (param != conv_other->param) {
+      return false;
     }
 
-    void setNodeDim(int dim) override {
-        setDim(dim);
+    return true;
+  }
+
+  string typeSignature() const override {
+    return Node::typeSignature() + "-" + addressToString(param);
+  }
+
+  // for which do no require merge
+  void compute() override {
+    if (xid >= 0) {
+      param->value(xid, val());
+    } else {
+      val().zero();
     }
+  }
 
-    void initNode(int dim) override {
-        init(dim);
+  void backward() override {
+    if (should_backward) {
+      param->loss(xid, loss());
     }
-
-    void setParam(LookupTable<ParamType>* paramInit) {
-        param = paramInit;
-    }
-
-    void setParam(ParamType &table) {
-        param = &table;
-    }
-
-    void forward(Graph &graph, int &exid) {
-        xid = exid;
-        graph.addNode(this);
-    }
-
-    PExecutor generate() override;
-
-    // better to rewrite for deep understanding
-    bool typeEqual(PNode other) override {
-        bool result = Node::typeEqual(other);
-        if (!result) return false;
-
-        LookupNode* conv_other = (LookupNode*)other;
-        if (param != conv_other->param) {
-            return false;
-        }
-
-        return true;
-    }
-
-    string typeSignature() const override {
-        return Node::typeSignature() + "-" + addressToString(param);
-    }
-
-    // for which do no require merge
-    void compute() override {
-        if (xid >= 0) {
-            param->value(xid, val());
-        } else {
-            val().zero();
-        }
-    }
-
-    void backward() override {
-        if (should_backward) {
-            param->loss(xid, loss());
-        }
-    }
+  }
 };
 
 namespace n3ldg_plus {
 
-template <typename ParamType>
-Node *embedding(Graph &graph,ParamType &lookup, int id, bool should_backward = true) {
-    LookupNode<ParamType>* input_lookup = LookupNode<ParamType>::newNode(lookup.outDim());
-    input_lookup->should_backward = should_backward;
-    input_lookup->setParam(lookup);
-    input_lookup->forward(graph, id);
-    return input_lookup;
+template<typename ParamType>
+Node *embedding(Graph &graph, ParamType &lookup, int id, bool should_backward = true) {
+  LookupNode<ParamType> *input_lookup = LookupNode<ParamType>::newNode(lookup.outDim());
+  input_lookup->should_backward = should_backward;
+  input_lookup->setParam(lookup);
+  input_lookup->forward(graph, id);
+  return input_lookup;
 }
 
-template <typename ParamType>
+template<typename ParamType>
 Node *embedding(Graph &graph, LookupTable<ParamType> &lookup, int dim, const string &word,
-        bool should_backward = true) {
-    int xid;
-    if (!lookup.findElemId(word)) {
-        if (lookup.nUNKId < 0) {
-            cerr << "nUNKId is negative:" << lookup.nUNKId << endl;
-            abort();
-        }
-        xid = lookup.nUNKId;
-    } else {
-        xid = lookup.getElemId(word);
+                bool should_backward = true) {
+  int xid;
+  if (!lookup.findElemId(word)) {
+    if (lookup.nUNKId < 0) {
+      cerr << "nUNKId is negative:" << lookup.nUNKId << endl;
+      abort();
     }
-    LookupNode<ParamType>* input_lookup = LookupNode<ParamType>::newNode(dim);
-    input_lookup->setParam(lookup.E);
-    input_lookup->forward(graph, xid);
-    input_lookup->should_backward = should_backward;
-    return input_lookup;
+    xid = lookup.nUNKId;
+  } else {
+    xid = lookup.getElemId(word);
+  }
+  LookupNode<ParamType> *input_lookup = LookupNode<ParamType>::newNode(dim);
+  input_lookup->setParam(lookup.E);
+  input_lookup->forward(graph, xid);
+  input_lookup->should_backward = should_backward;
+  return input_lookup;
 }
 
-template <typename ParamType>
+template<typename ParamType>
 Node *embedding(Graph &graph, LookupTable<ParamType> &lookup, const string &word,
-        bool should_backward = true) {
-    return embedding(graph, lookup, lookup.nDim, word, should_backward);
+                bool should_backward = true) {
+  return embedding(graph, lookup, lookup.nDim, word, should_backward);
 }
 
 }
@@ -413,26 +412,26 @@ void LookupExecutor<Param>::genericBackward(vector<dtype*> &losses) {
 }
 
 #else
-class LookupExecutor :public Executor {
-public:
-    int calculateFLOPs() override {
-        return 0;
-    }
+class LookupExecutor : public Executor {
+ public:
+  int calculateFLOPs() override {
+    return 0;
+  }
 
-    int calculateActivations() override {
-        return 0;
-    }
+  int calculateActivations() override {
+    return 0;
+  }
 };
 #endif
 
 template<typename ParamType>
 PExecutor LookupNode<ParamType>::generate() {
-    LookupExecutor<ParamType>* exec = new LookupExecutor<ParamType>();
+  LookupExecutor<ParamType> *exec = new LookupExecutor<ParamType>();
 #if USE_GPU
-    exec->table = param;
-    exec->dim = getDim();
+  exec->table = param;
+  exec->dim = getDim();
 #endif
-    return exec;
+  return exec;
 }
 
 #endif /*_LOOKUPTABLE_H*/

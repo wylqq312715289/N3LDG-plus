@@ -7,65 +7,61 @@
 #include "Graph.h"
 
 class DivNode : public Node, public Poolable<DivNode> {
-public:
-    DivNode() : Node("div_node") {}
+ public:
+  DivNode() : Node("div_node") {}
 
-    void initNode(int dim) override {
-        init(dim);
+  void initNode(int dim) override {
+    init(dim);
+  }
+
+  void setNodeDim(int dim) override {
+    setDim(dim);
+  }
+
+  bool typeEqual(Node *other) override {
+    return getNodeType() == other->getNodeType();
+  }
+
+  string typeSignature() const override {
+    return getNodeType();
+  }
+
+  void forward(Graph &graph, Node &numerator, Node &denominator) {
+    if (getDim() != numerator.getDim() || 1 != denominator.getDim()) {
+      cerr << boost::format("dim:%1% minuend:%2% subtrahend:%3%") % getDim() %
+          numerator.getDim() % denominator.getDim() << endl;
+      abort();
     }
+    numerator_ = &numerator;
+    denominator_ = &denominator;
+    vector<Node *> ins = {numerator_, denominator_};
+    afterForward(graph, ins);
+  }
 
-    void setNodeDim(int dim) override {
-        setDim(dim);
+  void compute() override {
+    val().vec() = numerator_->getVal().vec() / denominator_->getVal()[0];
+  }
+
+  void backward() override {
+    numerator_->loss().vec() += getLoss().vec() / denominator_->getVal()[0];
+
+    dtype square = denominator_->getVal()[0] * denominator_->getVal()[0];
+
+    for (int i = 0; i < getDim(); ++i) {
+      denominator_->loss()[0] -= getLoss()[i] * numerator_->getVal()[i] / square;
     }
+  }
 
-    bool typeEqual(Node* other) override {
-        return getNodeType() == other->getNodeType();
-    }
+  PExecutor generate() override;
 
-    string typeSignature() const override {
-        return getNodeType();
-    }
-
-    void forward(Graph &graph, Node &numerator, Node &denominator) {
-        if (getDim() != numerator.getDim() || 1 != denominator.getDim()) {
-            cerr << boost::format("dim:%1% minuend:%2% subtrahend:%3%") % getDim() %
-                numerator.getDim() % denominator.getDim() << endl;
-            abort();
-        }
-        numerator_ = &numerator;
-        denominator_ = &denominator;
-        vector<Node*> ins = {numerator_, denominator_};
-        afterForward(graph, ins);
-    }
-
-    void compute() override {
-        val().vec() = numerator_->getVal().vec() / denominator_->getVal()[0];
-    }
-
-    void backward() override {
-        numerator_->loss().vec() += getLoss().vec() / denominator_->getVal()[0];
-
-        dtype square = denominator_->getVal()[0] * denominator_->getVal()[0];
-
-        for (int i = 0; i < getDim(); ++i) {
-            denominator_->loss()[0] -= getLoss()[i] * numerator_->getVal()[i] / square;
-        }
-    }
-
-    PExecutor generate() override;
-
-private:
-    Node *numerator_;
-    Node *denominator_;
-    friend class DivExecutor;
+ private:
+  Node *numerator_;
+  Node *denominator_;
+  friend class DivExecutor;
 };
 
 namespace n3ldg_plus {
-    Node *div(Graph &graph, Node &numerator, Node &denominator) {
-        DivNode *result = DivNode::newNode(numerator.getDim());
-        result->forward(graph, numerator, denominator);
-        return result;
-    }
+Node *div(Graph &graph, Node &numerator, Node &denominator);
 }
 
 #if USE_GPU
@@ -119,58 +115,53 @@ public:
 };
 #else
 class DivExecutor : public Executor {
-public:
-    int calculateFLOPs() override {
-        return defaultFLOPs();
-    }
+ public:
+  int calculateFLOPs() override {
+    return defaultFLOPs();
+  }
 };
 #endif
 
-Executor *DivNode::generate() {
-    DivExecutor * executor = new DivExecutor();
-    return executor;
-}
+class FullDivNode : public Node, public Poolable<FullDivNode> {
+ public:
+  FullDivNode() : Node("full_div") {}
 
-class FullDivNode : public Node, public Poolable<FullDivNode>  {
-public:
-    FullDivNode() : Node("full_div") {}
+  void initNode(int dim) override {
+    init(dim);
+  }
 
-    void initNode(int dim) override {
-        init(dim);
+  void setNodeDim(int dim) override {
+    setDim(dim);
+  }
+
+  void forward(Graph &graph, Node &numerator, Node &denominator) {
+    if (getDim() != numerator.getDim() || getDim() != denominator.getDim()) {
+      cerr << boost::format("dim:%1% minuend:%2% subtrahend:%3%") % getDim() %
+          numerator.getDim() % denominator.getDim() << endl;
+      abort();
     }
+    numerator_ = &numerator;
+    denominator_ = &denominator;
+    vector<Node *> ins = {numerator_, denominator_};
+    afterForward(graph, ins);
+  }
 
-    void setNodeDim(int dim) override {
-        setDim(dim);
-    }
+  void compute() override {
+    val().vec() = numerator_->getVal().vec() / denominator_->getVal().vec();
+  }
 
-    void forward(Graph &graph, Node &numerator, Node &denominator) {
-        if (getDim() != numerator.getDim() || getDim() != denominator.getDim()) {
-            cerr << boost::format("dim:%1% minuend:%2% subtrahend:%3%") % getDim() %
-                numerator.getDim() % denominator.getDim() << endl;
-            abort();
-        }
-        numerator_ = &numerator;
-        denominator_ = &denominator;
-        vector<Node*> ins = {numerator_, denominator_};
-        afterForward(graph, ins);
-    }
+  void backward() override {
+    numerator_->loss().vec() += getLoss().vec() / denominator_->getVal().vec();
+    denominator_->loss().vec() -= getLoss().vec() * numerator_->getVal().vec() /
+        denominator_->getVal().vec().square();
+  }
 
-    void compute() override {
-        val().vec() = numerator_->getVal().vec() / denominator_->getVal().vec();
-    }
+  PExecutor generate() override;
 
-    void backward() override {
-        numerator_->loss().vec() += getLoss().vec() / denominator_->getVal().vec();
-        denominator_->loss().vec() -= getLoss().vec() * numerator_->getVal().vec() /
-            denominator_->getVal().vec().square();
-    }
-
-    PExecutor generate() override;
-
-private:
-    Node *numerator_;
-    Node *denominator_;
-    friend class FullDivExecutor;
+ private:
+  Node *numerator_;
+  Node *denominator_;
+  friend class FullDivExecutor;
 };
 
 #if USE_GPU
@@ -222,23 +213,15 @@ public:
 };
 #else
 class FullDivExecutor : public Executor {
-public:
-    int calculateFLOPs() override {
-        return defaultFLOPs();
-    }
+ public:
+  int calculateFLOPs() override {
+    return defaultFLOPs();
+  }
 };
 #endif
 
-Executor *FullDivNode::generate() {
-    return new FullDivExecutor();
-}
-
 namespace n3ldg_plus {
-    Node *fullDiv(Graph &graph, Node &numerator, Node &denominator) {
-        FullDivNode *result = FullDivNode::newNode(numerator.getDim());
-        result->forward(graph, numerator, denominator);
-        return result;
-    }
+Node *fullDiv(Graph &graph, Node &numerator, Node &denominator);
 }
 
 #endif

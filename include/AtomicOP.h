@@ -54,379 +54,365 @@ private:
 #else
 template<ActivatedEnum activation>
 class ActivationExecutor : public UniInputExecutor {
-public:
-    int calculateFLOPs() override {
-        return defaultFLOPs();
-    }
+ public:
+  int calculateFLOPs() override {
+    return defaultFLOPs();
+  }
 
 };
 #endif
 
 class TanhNode : public UniInputNode, public Poolable<TanhNode> {
-public:
-    TanhNode() : UniInputNode("tanh") {}
+ public:
+  TanhNode() : UniInputNode("tanh") {}
 
-    void initNode(int dim) override {
-        init(dim);
-    }
+  void initNode(int dim) override {
+    init(dim);
+  }
 
-    void setNodeDim(int dim) override {
-        setDim(dim);
-    }
+  void setNodeDim(int dim) override {
+    setDim(dim);
+  }
 
-    void compute() override {
-        val().vec() = getInput()->val().vec().unaryExpr(ptr_fun(ftanh));
-    }
+  void compute() override {
+    val().vec() = getInput()->val().vec().unaryExpr(ptr_fun(ftanh));
+  }
 
-    void backward() override {
-        getInput()->loss().vec() += loss().vec() * getInput()->val().vec().binaryExpr(val().vec(),
-                ptr_fun(dtanh));
-    }
+  void backward() override {
+    getInput()->loss().vec() += loss().vec() * getInput()->val().vec().binaryExpr(val().vec(),
+                                                                                  ptr_fun(dtanh));
+  }
 
-    PExecutor generate() override;
+  PExecutor generate() override;
 
-protected:
-    virtual bool isDimLegal(const Node &input) const override {
-        return input.getDim() == getDim();
-    }
+ protected:
+  virtual bool isDimLegal(const Node &input) const override {
+    return input.getDim() == getDim();
+  }
 };
 
-PExecutor TanhNode::generate() {
-    return new ActivationExecutor<ActivatedEnum::TANH>;
+class SigmoidNode : public UniInputNode, public Poolable<SigmoidNode> {
+ public:
+  SigmoidNode() : UniInputNode("sigmoid") {}
+
+  void initNode(int dim) override {
+    init(dim);
+  }
+
+  void setNodeDim(int dim) override {
+    setDim(dim);
+  }
+
+  void compute() override {
+    val().vec() = getInput()->val().vec().unaryExpr(ptr_fun(fsigmoid));
+  }
+
+  void backward() override {
+    getInput()->loss().vec() += loss().vec() * getInput()->val().vec().binaryExpr(val().vec(),
+                                                                                  ptr_fun(dsigmoid));
+  }
+
+  PExecutor generate() override {
+    return new ActivationExecutor<ActivatedEnum::SIGMOID>;
+  }
+
+ protected:
+  virtual bool isDimLegal(const Node &input) const override {
+    return input.getDim() == getDim();
+  }
 };
 
+class ReluNode : public UniInputNode, public Poolable<ReluNode> {
+ public:
+  ReluNode() : UniInputNode("relu") {}
 
-class SigmoidNode :public UniInputNode, public Poolable<SigmoidNode> {
-public:
-    SigmoidNode() : UniInputNode("sigmoid") {}
+  void initNode(int dim) override {
+    init(dim);
+  }
 
-    void initNode(int dim) override {
-        init(dim);
-    }
+  void setNodeDim(int dim) override {
+    setDim(dim);
+  }
 
-    void setNodeDim(int dim) override {
-        setDim(dim);
-    }
+  void compute() override {
+    val().vec() = getInput()->val().vec().unaryExpr(ptr_fun(frelu));
+  }
 
-    void compute() override {
-        val().vec() = getInput()->val().vec().unaryExpr(ptr_fun(fsigmoid));
-    }
+  void backward() override {
+    getInput()->loss().vec() += loss().vec() * getInput()->val().vec().binaryExpr(val().vec(),
+                                                                                  ptr_fun(drelu));
+  }
 
-    void backward() override {
-        getInput()->loss().vec() += loss().vec() * getInput()->val().vec().binaryExpr(val().vec(),
-                ptr_fun(dsigmoid));
-    }
+  PExecutor generate() override {
+    return new ActivationExecutor<ActivatedEnum::RELU>;
+  }
 
-    PExecutor generate() override {
-        return new ActivationExecutor<ActivatedEnum::SIGMOID>;
-    }
-
-protected:
-    virtual bool isDimLegal(const Node &input) const override {
-        return input.getDim() == getDim();
-    }
+ protected:
+  virtual bool isDimLegal(const Node &input) const override {
+    return input.getDim() == getDim();
+  }
 };
 
-class ReluNode :public UniInputNode, public Poolable<ReluNode> {
-public:
-    ReluNode() : UniInputNode("relu") {}
+class SqrtNode : public UniInputNode, public Poolable<SqrtNode> {
+ public:
+  SqrtNode() : UniInputNode("sqrt") {}
 
-    void initNode(int dim) override {
-        init(dim);
-    }
+  void initNode(int dim) override {
+    init(dim);
+  }
 
-    void setNodeDim(int dim) override {
-        setDim(dim);
-    }
+  void setNodeDim(int dim) override {
+    setDim(dim);
+  }
 
-    void compute() override {
-        val().vec() = getInput()->val().vec().unaryExpr(ptr_fun(frelu));
-    }
+  void compute() override {
+    val().vec() = getInput()->val().vec().unaryExpr(ptr_fun(fsqrt));
+  }
 
-    void backward() override {
-        getInput()->loss().vec() += loss().vec() * getInput()->val().vec().binaryExpr(val().vec(),
-                ptr_fun(drelu));
-    }
+  void backward() override {
+    getInput()->loss().vec() += loss().vec() * val().vec().unaryExpr(ptr_fun(dsqrt));
+  }
 
-    PExecutor generate() override {
-        return new ActivationExecutor<ActivatedEnum::RELU>;
-    }
+  PExecutor generate() override {
+    return new ActivationExecutor<ActivatedEnum::SQRT>;
+  }
 
-protected:
-    virtual bool isDimLegal(const Node &input) const override {
-        return input.getDim() == getDim();
-    }
-};
-
-class SqrtNode :public UniInputNode, public Poolable<SqrtNode> {
-public:
-    SqrtNode() : UniInputNode("sqrt") {}
-
-    void initNode(int dim) override {
-        init(dim);
-    }
-
-    void setNodeDim(int dim) override {
-        setDim(dim);
-    }
-
-    void compute() override {
-        val().vec() = getInput()->val().vec().unaryExpr(ptr_fun(fsqrt));
-    }
-
-    void backward() override {
-        getInput()->loss().vec() += loss().vec() * val().vec().unaryExpr(ptr_fun(dsqrt));
-    }
-
-    PExecutor generate() override {
-        return new ActivationExecutor<ActivatedEnum::SQRT>;
-    }
-
-protected:
-    virtual bool isDimLegal(const Node &input) const override {
-        return input.getDim() == getDim();
-    }
+ protected:
+  virtual bool isDimLegal(const Node &input) const override {
+    return input.getDim() == getDim();
+  }
 };
 
 class DropoutNode : public Node, public Poolable<DropoutNode> {
-public:
-    DropoutNode() : Node("dropout") {}
+ public:
+  DropoutNode() : Node("dropout") {}
 
-    void initNode(int dim) override {
-        init(dim);
-    }
+  void initNode(int dim) override {
+    init(dim);
+  }
 
-    void setNodeDim(int dim) override {
-        setDim(dim);
-    }
+  void setNodeDim(int dim) override {
+    setDim(dim);
+  }
 
-    void init(int dimm) override {
-        Node::init(dimm);
-        drop_mask_.init(dimm);
-    }
+  void init(int dimm) override {
+    Node::init(dimm);
+    drop_mask_.init(dimm);
+  }
 
 #if USE_GPU
-    void initOnHostAndDevice(int ndim) override {
-        Node::initOnHostAndDevice(ndim);
-        drop_mask_.init(ndim);
-    }
+  void initOnHostAndDevice(int ndim) override {
+      Node::initOnHostAndDevice(ndim);
+      drop_mask_.init(ndim);
+  }
 #endif
 
-    virtual void generate_dropmask() {
-        int dropNum = (int)(getDim() * drop_value_);
-        std::vector<int> tmp_masks(getDim());
-        for (int idx = 0; idx < getDim(); idx++) {
-            tmp_masks[idx] = idx < dropNum ? 0 : 1;
-        }
-        random_shuffle(tmp_masks.begin(), tmp_masks.end());
-        for (int idx = 0; idx < getDim(); idx++) {
-            drop_mask_[idx] = tmp_masks[idx];
-        }
+  virtual void generate_dropmask() {
+    int dropNum = (int) (getDim() * drop_value_);
+    std::vector<int> tmp_masks(getDim());
+    for (int idx = 0; idx < getDim(); idx++) {
+      tmp_masks[idx] = idx < dropNum ? 0 : 1;
     }
-
-    void forward(Graph &graph, Node &x) {
-        in_ = &x;
-        in_->addParent(this);
-        graph.addNode(this);
+    random_shuffle(tmp_masks.begin(), tmp_masks.end());
+    for (int idx = 0; idx < getDim(); idx++) {
+      drop_mask_[idx] = tmp_masks[idx];
     }
+  }
 
-    void compute() override {
-        if (is_training_) {
+  void forward(Graph &graph, Node &x) {
+    in_ = &x;
+    in_->addParent(this);
+    graph.addNode(this);
+  }
+
+  void compute() override {
+    if (is_training_) {
 #if !TEST_CUDA
-            generate_dropmask();
+      generate_dropmask();
 #endif
-        } else {
-            drop_mask_ = 1 - drop_value_;
-        }
-        val().vec() = in_->val().vec() * drop_mask_.vec();
+    } else {
+      drop_mask_ = 1 - drop_value_;
     }
+    val().vec() = in_->val().vec() * drop_mask_.vec();
+  }
 
-    void backward() override {
-        in_->loss().vec() += loss().vec() * drop_mask_.vec();
+  void backward() override {
+    in_->loss().vec() += loss().vec() * drop_mask_.vec();
+  }
+
+  bool typeEqual(Node *other) override {
+    DropoutNode *o = static_cast<DropoutNode *>(other);
+    if (o->is_training_ != is_training_) {
+      std::cerr << "is_training not equal" << std::endl;
+      abort();
     }
+    return Node::typeEqual(other) && abs(drop_value_ - o->drop_value_) < 0.001f;
+  }
 
-    bool typeEqual(Node *other) override {
-        DropoutNode *o = static_cast<DropoutNode*>(other);
-        if (o->is_training_ != is_training_) {
-            std::cerr << "is_training not equal" << std::endl;
-            abort();
-        }
-        return Node::typeEqual(other) && abs(drop_value_ - o->drop_value_) < 0.001f;
-    }
+  string typeSignature() const override {
+    return Node::typeSignature() + "-" + to_string(drop_value_);
+  }
 
-    string typeSignature() const override {
-        return Node::typeSignature() + "-" + to_string(drop_value_);
-    }
+  PExecutor generate() override;
 
-    PExecutor generate() override;
+  Node *in() {
+    return in_;
+  }
 
-    Node* in() {
-        return in_;
-    }
+  bool isTraning() {
+    return is_training_;
+  }
 
-    bool isTraning() {
-        return is_training_;
-    }
+  Tensor1D &dropMask() {
+    return drop_mask_;
+  }
 
-    Tensor1D &dropMask() {
-        return drop_mask_;
-    }
+  void setIsTraining(bool is_training) {
+    is_training_ = is_training;
+  }
 
-    void setIsTraining(bool is_training) {
-        is_training_ = is_training;
-    }
+  void setDropValue(dtype drop_value) {
+    drop_value_ = drop_value;
+  }
 
-    void setDropValue(dtype drop_value) {
-        drop_value_ = drop_value;
-    }
-
-private:
-    Node* in_ = nullptr;
-    Tensor1D drop_mask_;
-    dtype drop_value_ = 0.0f;
-    bool is_training_ = true;
+ private:
+  Node *in_ = nullptr;
+  Tensor1D drop_mask_;
+  dtype drop_value_ = 0.0f;
+  bool is_training_ = true;
 };
 
-class DropoutExecutor :public Executor {
-  public:
-    Tensor2D drop_mask;
-    dtype drop_value;
-    int dim;
-    bool is_training;
+class DropoutExecutor : public Executor {
+ public:
+  Tensor2D drop_mask;
+  dtype drop_value;
+  int dim;
+  bool is_training;
 
 #if USE_GPU
-    void CalculateDropMask(int count, int dim, const Tensor2D &mask) {
-        if (is_training) {
-            n3ldg_cuda::CalculateDropoutMask(drop_value, count, dim, mask.value);
-        }
-    }
+  void CalculateDropMask(int count, int dim, const Tensor2D &mask) {
+      if (is_training) {
+          n3ldg_cuda::CalculateDropoutMask(drop_value, count, dim, mask.value);
+      }
+  }
 
-    void forward() {
-        int count = batch.size();
-        std::vector<dtype*> xs, ys;
-        xs.reserve(count);
-        ys.reserve(count);
-        drop_mask.init(dim, count);
-        for (Node *n : batch) {
-            DropoutNode *tanh = static_cast<DropoutNode*>(n);
+  void forward() {
+      int count = batch.size();
+      std::vector<dtype*> xs, ys;
+      xs.reserve(count);
+      ys.reserve(count);
+      drop_mask.init(dim, count);
+      for (Node *n : batch) {
+          DropoutNode *tanh = static_cast<DropoutNode*>(n);
 #if TEST_CUDA
-            tanh->in()->val().copyFromHostToDevice();
+          tanh->in()->val().copyFromHostToDevice();
 #endif
-            xs.push_back(tanh->in()->getVal().value);
-            ys.push_back(tanh->getVal().value);
-        }
+          xs.push_back(tanh->in()->getVal().value);
+          ys.push_back(tanh->getVal().value);
+      }
 
-        CalculateDropMask(count, dim, drop_mask);
-        n3ldg_cuda::DropoutForward(xs, count, dim, is_training, drop_mask.value, drop_value, ys);
+      CalculateDropMask(count, dim, drop_mask);
+      n3ldg_cuda::DropoutForward(xs, count, dim, is_training, drop_mask.value, drop_value, ys);
 #if TEST_CUDA
-        if (is_training) {
-            drop_mask.copyFromDeviceToHost();
-            for (int i = 0; i < count; ++i) {
-                for (int j = 0; j < dim; ++j) {
-                    dtype v = drop_mask[i][j];
-                    static_cast<DropoutNode*>(batch.at(i))->dropMask()[j] = v <= drop_value ?
-                        0 : 1;
-                }
-            }
-        }
-        for (int idx = 0; idx < count; idx++) {
-            batch[idx]->compute();
-            n3ldg_cuda::Assert(batch.at(idx)->val().verify("Dropout forward"));
-        }
+      if (is_training) {
+          drop_mask.copyFromDeviceToHost();
+          for (int i = 0; i < count; ++i) {
+              for (int j = 0; j < dim; ++j) {
+                  dtype v = drop_mask[i][j];
+                  static_cast<DropoutNode*>(batch.at(i))->dropMask()[j] = v <= drop_value ?
+                      0 : 1;
+              }
+          }
+      }
+      for (int idx = 0; idx < count; idx++) {
+          batch[idx]->compute();
+          n3ldg_cuda::Assert(batch.at(idx)->val().verify("Dropout forward"));
+      }
 #endif
-    }
+  }
 
-    void backward() {
-        int count = batch.size();
-        std::vector<dtype*> vals, losses, in_losses;
-        vals.reserve(count);
-        losses.reserve(count);
-        in_losses.reserve(count);
-        for (Node *n : batch) {
-            DropoutNode *tanh = static_cast<DropoutNode*>(n);
+  void backward() {
+      int count = batch.size();
+      std::vector<dtype*> vals, losses, in_losses;
+      vals.reserve(count);
+      losses.reserve(count);
+      in_losses.reserve(count);
+      for (Node *n : batch) {
+          DropoutNode *tanh = static_cast<DropoutNode*>(n);
 #if TEST_CUDA
-            tanh->loss().copyFromHostToDevice();
-            tanh->in()->loss().copyFromHostToDevice();
+          tanh->loss().copyFromHostToDevice();
+          tanh->in()->loss().copyFromHostToDevice();
 #endif
-            vals.push_back(tanh->val().value);
-            losses.push_back(tanh->loss().value);
-            in_losses.push_back(tanh->in()->loss().value);
-        }
-        n3ldg_cuda::DropoutBackward(losses, vals, count, dim, is_training, drop_mask.value,
-                drop_value, in_losses);
+          vals.push_back(tanh->val().value);
+          losses.push_back(tanh->loss().value);
+          in_losses.push_back(tanh->in()->loss().value);
+      }
+      n3ldg_cuda::DropoutBackward(losses, vals, count, dim, is_training, drop_mask.value,
+              drop_value, in_losses);
 #if TEST_CUDA
-        for (Node *n : batch) {
-            n->backward();
-        }
-        for (Node *n : batch) {
-            DropoutNode *tanh = static_cast<DropoutNode*>(n);
-            n3ldg_cuda::Assert(tanh->in()->loss().verify("DropoutExecutor backward"));
-        }
+      for (Node *n : batch) {
+          n->backward();
+      }
+      for (Node *n : batch) {
+          DropoutNode *tanh = static_cast<DropoutNode*>(n);
+          n3ldg_cuda::Assert(tanh->in()->loss().verify("DropoutExecutor backward"));
+      }
 #endif
-    }
+  }
 #else
-    int calculateFLOPs() override {
-        return defaultFLOPs();
-    }
+  int calculateFLOPs() override {
+    return defaultFLOPs();
+  }
 #endif
 };
-
-PExecutor DropoutNode::generate() {
-    DropoutExecutor* exec = new DropoutExecutor();
-    exec->batch.push_back(this);
-    exec->is_training = isTraning();
-    exec->drop_value = drop_value_;
-    exec->dim = getDim();
-    return exec;
-}
 
 class MaxScalarNode : public UniInputNode, public Poolable<MaxScalarNode> {
-public:
-    MaxScalarNode() : UniInputNode("max_scalar_node") {}
+ public:
+  MaxScalarNode() : UniInputNode("max_scalar_node") {}
 
-    void initNode(int dim) override {
-        init(dim);
+  void initNode(int dim) override {
+    init(dim);
+  }
+
+  void setNodeDim(int dim) override {
+    setDim(dim);
+  }
+
+  bool typeEqual(Node *other) override {
+    return Node::typeEqual(other);
+  }
+
+  string typeSignature() const override {
+    return Node::typeSignature();
+  }
+
+  void compute() override {
+    float max = getInput()->getVal()[0];
+    int max_i = 0;
+    for (int i = 1; i < getInput()->getDim(); ++i) {
+      if (getInput()->getVal()[i] > max) {
+        max = getInput()->getVal()[i];
+        max_i = i;
+      }
     }
+    max_i_ = max_i;
+    val()[0] = max;
+  }
 
-    void setNodeDim(int dim) override {
-        setDim(dim);
-    }
+  void backward() override {
+    getInput()->loss()[max_i_] += getLoss()[0];
+  }
 
-    bool typeEqual(Node *other) override {
-        return Node::typeEqual(other);
-    }
+  Executor *generate() override;
 
-    string typeSignature() const override {
-        return Node::typeSignature();
-    }
+ protected:
+  bool isDimLegal(const Node &input) const override {
+    return true;
+  }
 
-    void compute() override {
-        float max = getInput()->getVal()[0];
-        int max_i = 0;
-        for (int i = 1; i < getInput()->getDim(); ++i) {
-            if (getInput()->getVal()[i] > max) {
-                max = getInput()->getVal()[i];
-                max_i = i;
-            }
-        }
-        max_i_ = max_i;
-        val()[0] = max;
-    }
-
-    void backward() override {
-        getInput()->loss()[max_i_] += getLoss()[0];
-    }
-
-    Executor* generate() override;
-
-protected:
-    bool isDimLegal(const Node &input) const override {
-        return true;
-    }
-
-private:
-    int max_i_;
-    friend class MaxScalarExecutor;
+ private:
+  int max_i_;
+  friend class MaxScalarExecutor;
 };
 
 #if USE_GPU
@@ -495,62 +481,57 @@ private:
 };
 #else
 class MaxScalarExecutor : public Executor {
-public:
-    int calculateFLOPs() override {
-        return defaultFLOPs();
-    }
+ public:
+  int calculateFLOPs() override {
+    return defaultFLOPs();
+  }
 };
 #endif
 
-Executor *MaxScalarNode::generate() {
-    MaxScalarExecutor * executor = new MaxScalarExecutor();
-    return executor;
-}
-
 class ScalarToVectorNode : public UniInputNode, public Poolable<ScalarToVectorNode> {
-public:
-    ScalarToVectorNode() : UniInputNode("scalar_to_vector") {}
+ public:
+  ScalarToVectorNode() : UniInputNode("scalar_to_vector") {}
 
-    void initNode(int dim) override {
-        init(dim);
+  void initNode(int dim) override {
+    init(dim);
+  }
+
+  void setNodeDim(int dim) override {
+    setDim(dim);
+  }
+
+  bool typeEqual(Node *other) override {
+    return getNodeType() == other->getNodeType();
+  }
+
+  string typeSignature() const override {
+    return getNodeType();
+  }
+
+  void compute() override {
+    for (int i = 0; i < getDim(); ++i) {
+      val()[i] = getInput()->getVal()[0];
     }
+  }
 
-    void setNodeDim(int dim) override {
-        setDim(dim);
+  void backward() override {
+    int dim = getDim();
+    dtype sum = 0;
+    for (int i = 0; i < dim; ++i) {
+      sum += getLoss()[i];
     }
+    getInput()->loss()[0] += sum;
+  }
 
-    bool typeEqual(Node *other) override {
-        return getNodeType() == other->getNodeType();
-    }
+  Executor *generate() override;
 
-    string typeSignature() const override {
-        return getNodeType();
-    }
+ protected:
+  bool isDimLegal(const Node &input) const override {
+    return input.getDim() == 1;
+  }
 
-    void compute() override {
-        for (int i = 0; i < getDim(); ++i) {
-            val()[i] = getInput()->getVal()[0];
-        }
-    }
-
-    void backward() override {
-        int dim = getDim();
-        dtype sum = 0;
-        for (int i = 0; i < dim; ++i) {
-            sum += getLoss()[i];
-        }
-        getInput()->loss()[0] += sum;
-    }
-
-    Executor* generate() override;
-
-protected:
-    bool isDimLegal(const Node &input) const override {
-        return input.getDim() == 1;
-    }
-
-private:
-    friend class ScalarToVectorExecutor;
+ private:
+  friend class ScalarToVectorExecutor;
 };
 
 #if USE_GPU
@@ -604,102 +585,97 @@ private:
 };
 #else
 class ScalarToVectorExecutor : public Executor {
-public:
-    int calculateFLOPs() override {
-        return 0;
-    }
+ public:
+  int calculateFLOPs() override {
+    return 0;
+  }
 };
 #endif
 
-Executor *ScalarToVectorNode::generate() {
-    ScalarToVectorExecutor * executor = new ScalarToVectorExecutor();
-    return executor;
-}
-
 class ExpNode : public UniInputNode, public Poolable<ExpNode> {
-public:
-    ExpNode() : UniInputNode("exp") {}
+ public:
+  ExpNode() : UniInputNode("exp") {}
 
-    void initNode(int dim) override {
-        init(dim);
-    }
+  void initNode(int dim) override {
+    init(dim);
+  }
 
-    void setNodeDim(int dim) override {
-        setDim(dim);
-    }
+  void setNodeDim(int dim) override {
+    setDim(dim);
+  }
 
-    Executor* generate() override {
-        return new ActivationExecutor<ActivatedEnum::EXP>;
-    }
+  Executor *generate() override {
+    return new ActivationExecutor<ActivatedEnum::EXP>;
+  }
 
-    bool typeEqual(Node *other) override {
-        return getNodeType() == other->getNodeType();
-    }
+  bool typeEqual(Node *other) override {
+    return getNodeType() == other->getNodeType();
+  }
 
-    string typeSignature() const override {
-        return getNodeType();
-    }
+  string typeSignature() const override {
+    return getNodeType();
+  }
 
-    void compute() override {
-        val().vec() = getInput()->getVal().vec().exp();
-    }
+  void compute() override {
+    val().vec() = getInput()->getVal().vec().exp();
+  }
 
-    void backward() override {
-        getInput()->loss().vec() += getLoss().vec() * getVal().vec();
-    }
+  void backward() override {
+    getInput()->loss().vec() += getLoss().vec() * getVal().vec();
+  }
 
-protected:
-    bool isDimLegal(const Node &input) const override {
-        return input.getDim() == getDim();
-    }
+ protected:
+  bool isDimLegal(const Node &input) const override {
+    return input.getDim() == getDim();
+  }
 
-private:
-    friend class ExpExecutor;
+ private:
+  friend class ExpExecutor;
 };
 
 class SumNode : public UniInputNode, public Poolable<SumNode> {
-public:
-    SumNode(): UniInputNode("sum") {}
+ public:
+  SumNode() : UniInputNode("sum") {}
 
-    void initNode(int dim) override {
-        init(dim);
+  void initNode(int dim) override {
+    init(dim);
+  }
+
+  void setNodeDim(int dim) override {
+    setDim(dim);
+  }
+
+  Executor *generate() override;
+
+  virtual bool typeEqual(Node *other) override {
+    return Node::typeEqual(other);
+  }
+
+  virtual string typeSignature() const override {
+    return Node::typeSignature();
+  }
+
+  void compute() override {
+    dtype sum = 0;
+    for (int i = 0; i < getInput()->getDim(); ++i) {
+      sum += getInput()->getVal()[i];
     }
+    val()[0] = sum;
+  }
 
-    void setNodeDim(int dim) override {
-        setDim(dim);
+  void backward() override {
+    for (int i = 0; i < getInput()->getDim(); ++i) {
+      getInput()->loss()[i] += getLoss()[0];
     }
+  }
 
-    Executor* generate() override;
+ protected:
+  bool isDimLegal(const Node &input) const override {
+    return true;
+  }
 
-    virtual bool typeEqual(Node *other) override {
-        return Node::typeEqual(other);
-    }
-
-    virtual string typeSignature() const override {
-        return Node::typeSignature();
-    }
-
-    void compute() override {
-        dtype sum = 0;
-        for (int i = 0; i < getInput()->getDim(); ++i) {
-            sum += getInput()->getVal()[i];
-        }
-        val()[0] = sum;
-    }
-
-    void backward() override {
-        for (int i = 0; i < getInput()->getDim(); ++i) {
-            getInput()->loss()[i] += getLoss()[0];
-        }
-    }
-
-protected:
-    bool isDimLegal(const Node &input) const override {
-        return true;
-    }
-
-private:
-    friend class SumExecutor;
+ private:
+  friend class SumExecutor;
 };
 
 #if USE_GPU
@@ -744,62 +720,57 @@ private:
 };
 #else
 class SumExecutor : public Executor {
-public:
-    int calculateFLOPs() override {
-        return defaultFLOPs();
-    }
+ public:
+  int calculateFLOPs() override {
+    return defaultFLOPs();
+  }
 };
 #endif
-
-Executor *SumNode::generate() {
-    SumExecutor *e = new SumExecutor();
-    return e;
-}
 
 class ScaledExecutor;
 
 class ScaledNode : public UniInputNode, public Poolable<ScaledNode> {
-public:
-    ScaledNode() : UniInputNode("ScaledNode") {}
+ public:
+  ScaledNode() : UniInputNode("ScaledNode") {}
 
-    void initNode(int dim) override {
-        init(dim);
-    }
+  void initNode(int dim) override {
+    init(dim);
+  }
 
-    void setNodeDim(int dim) override {
-        setDim(dim);
-    }
+  void setNodeDim(int dim) override {
+    setDim(dim);
+  }
 
-    void setFactor(dtype factor) {
-        factor_ = factor;
-    }
+  void setFactor(dtype factor) {
+    factor_ = factor;
+  }
 
-    void compute() override {
-        val().vec() = factor_ * getInput()->getVal().vec();
-    }
+  void compute() override {
+    val().vec() = factor_ * getInput()->getVal().vec();
+  }
 
-    void backward() override {
-        getInput()->loss().vec() += factor_ * getLoss().vec();
-    }
+  void backward() override {
+    getInput()->loss().vec() += factor_ * getLoss().vec();
+  }
 
-    Executor* generate() override;
+  Executor *generate() override;
 
-    virtual bool typeEqual(Node *other) override {
-        return getNodeType() == other->getNodeType();
-    }
+  virtual bool typeEqual(Node *other) override {
+    return getNodeType() == other->getNodeType();
+  }
 
-    virtual string typeSignature() const override {
-        return getNodeType();
-    }
+  virtual string typeSignature() const override {
+    return getNodeType();
+  }
 
-protected:
-    bool isDimLegal(const Node &input) const override {
-        return input.getDim() == getDim();
-    }
+ protected:
+  bool isDimLegal(const Node &input) const override {
+    return input.getDim() == getDim();
+  }
 
-private:
-    dtype factor_ = 1;
-    friend class ScaledExecutor;
+ private:
+  dtype factor_ = 1;
+  friend class ScaledExecutor;
 };
 
 #if USE_GPU
@@ -841,83 +812,35 @@ private:
 };
 #else
 class ScaledExecutor : public Executor {
-public:
-    int calculateFLOPs() override {
-        return defaultFLOPs();
-    }
+ public:
+  int calculateFLOPs() override {
+    return defaultFLOPs();
+  }
 };
 #endif
 
-Executor *ScaledNode::generate() {
-    return new ScaledExecutor;
-}
-
 namespace n3ldg_plus {
 
-Node *maxScalar(Graph &graph, Node &input) {
-    MaxScalarNode *node = MaxScalarNode::newNode(1);
-    node->forward(graph, input);
-    return node;
-}
+Node *maxScalar(Graph &graph, Node &input);
 
-Node *tanh(Graph &graph, Node &input) {
-    TanhNode *result = TanhNode::newNode(input.getDim());
-    result->forward(graph, input);
-    return result;
-}
+Node *tanh(Graph &graph, Node &input);
 
-Node *sigmoid(Graph &graph, Node &input) {
-    SigmoidNode *result = SigmoidNode::newNode(input.getDim());
-    result->forward(graph, input);
-    return result;
-}
+Node *sigmoid(Graph &graph, Node &input);
 
-Node *relu(Graph &graph, Node &input) {
-    ReluNode *result = ReluNode::newNode(input.getDim());
-    result->forward(graph, input);
-    return result;
-}
+Node *relu(Graph &graph, Node &input);
 
-Node *sqrt(Graph &graph, Node &input) {
-    SqrtNode *result = SqrtNode::newNode(input.getDim());
-    result->forward(graph, input);
-    return result;
-}
+Node *sqrt(Graph &graph, Node &input);
 
-Node *scalarToVector(Graph &graph, int dim, Node &input) {
-    ScalarToVectorNode *node = ScalarToVectorNode::newNode(dim);
-    node->forward(graph, input);
-    return node;
-}
+Node *scalarToVector(Graph &graph, int dim, Node &input);
 
-Node *vectorSum(Graph &graph, Node &input) {
-    SumNode *sum = SumNode::newNode(1);
-    sum->forward(graph, input);
-    return sum;
-}
+Node *vectorSum(Graph &graph, Node &input);
 
-Node *exp(Graph &graph, Node &input) {
-    ExpNode *node = ExpNode::newNode(input.getDim());
-    node->forward(graph, input);
-    return node;
-}
+Node *exp(Graph &graph, Node &input);
 
-Node *dropout(Graph &graph, Node &input, dtype dropout, bool is_training) {
-    DropoutNode *node = DropoutNode::newNode(input.getDim());
-    node->setIsTraining(is_training);
-    node->setDropValue(dropout);
-    node->forward(graph, input);
-    return node;
-}
+Node *dropout(Graph &graph, Node &input, dtype dropout, bool is_training);
 
-Node *scaled(Graph &graph, Node &input, dtype factor) {
-    ScaledNode *node = ScaledNode::newNode(input.getDim());
-    node->setFactor(factor);
-    node->forward(graph, input);
-    return node;
-}
+Node *scaled(Graph &graph, Node &input, dtype factor);
 
 }
-
 
 #endif

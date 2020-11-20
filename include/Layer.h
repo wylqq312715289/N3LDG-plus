@@ -11,29 +11,29 @@
 using namespace std;
 
 class Layer {
-public:
-    Layer() = default;
-    Layer(const Layer &layer) = delete;
-    Layer(const vector<Node *> &nodes) : nodes_(nodes) {}
+ public:
+  Layer() = default;
+  Layer(const Layer &layer) = delete;
+  Layer(const vector<Node *> &nodes) : nodes_(nodes) {}
 
-    const vector<Node*> &getNodes() const {
-        return nodes_;
-    }
+  const vector<Node *> &getNodes() const {
+    return nodes_;
+  }
 
-    Layer &forward(Graph &graph, const Layer &input) {
-        innerForward(graph, input);
-        return *this;
-    }
+  Layer &forward(Graph &graph, const Layer &input) {
+    innerForward(graph, input);
+    return *this;
+  }
 
-protected:
-    virtual void innerForward(Graph &graph, const Layer &input)  = 0;
+ protected:
+  virtual void innerForward(Graph &graph, const Layer &input) = 0;
 
-    void setNodes(const vector<Node*> &nodes) {
-        nodes_ = nodes;
-    }
+  void setNodes(const vector<Node *> &nodes) {
+    nodes_ = nodes;
+  }
 
-private:
-    vector<Node*> nodes_;
+ private:
+  vector<Node *> nodes_;
 };
 
 #endif

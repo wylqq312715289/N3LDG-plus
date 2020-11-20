@@ -22,128 +22,128 @@
 
 class UniParams : public N3LDGSerializable, public TunableCombination<BaseParam>
 #if USE_GPU
-, public TransferableComponents
+  , public TransferableComponents
 #endif
 {
-public:
-    Param W;
-    Param b;
-    bool bUseB = true;
+ public:
+  Param W;
+  Param b;
+  bool bUseB = true;
 
-    UniParams(const string &name) : W(name + "-W"), b(name + "-b", true) {}
+  UniParams(const string &name) : W(name + "-W"), b(name + "-b", true) {}
 
-    void init(int nOSize, int nISize, bool useB = true,
+  void init(int nOSize, int nISize, bool useB = true,
             const std::function<dtype(int, int)> *bound = nullptr) {
-        W.init(nOSize, nISize, bound);
+    W.init(nOSize, nISize, bound);
 
-        bUseB = useB;
-        if (bUseB) {
-            b.init(nOSize, 1);
-        }
+    bUseB = useB;
+    if (bUseB) {
+      b.init(nOSize, 1);
     }
+  }
 
-    Json::Value toJson() const override {
-        Json::Value json;
-        json["use_b"] = bUseB;
-        json["w"] = W.toJson();
-        if (bUseB) {
-            json["b"] = b.toJson();
-        }
-        return json;
+  Json::Value toJson() const override {
+    Json::Value json;
+    json["use_b"] = bUseB;
+    json["w"] = W.toJson();
+    if (bUseB) {
+      json["b"] = b.toJson();
     }
+    return json;
+  }
 
-    void fromJson(const Json::Value &json) override {
-        bUseB = json["use_b"].asBool();
-        W.fromJson(json["w"]);
-        if (bUseB) {
-            b.fromJson(json["b"]);
-        }
+  void fromJson(const Json::Value &json) override {
+    bUseB = json["use_b"].asBool();
+    W.fromJson(json["w"]);
+    if (bUseB) {
+      b.fromJson(json["b"]);
     }
+  }
 
 #if USE_GPU
-    std::vector<n3ldg_cuda::Transferable *> transferablePtrs() override {
-        std::vector<Transferable *> ptrs = {&W};
-        if (bUseB) {
-            ptrs.push_back(&b);
-        }
-        return ptrs;
-    }
+  std::vector<n3ldg_cuda::Transferable *> transferablePtrs() override {
+      std::vector<Transferable *> ptrs = {&W};
+      if (bUseB) {
+          ptrs.push_back(&b);
+      }
+      return ptrs;
+  }
 #endif
 
-protected:
-    virtual std::vector<Tunable<BaseParam>*> tunableComponents() override {
-        if (bUseB) {
-            return {&W, &b};
-        } else {
-            return {&W};
-        }
+ protected:
+  virtual std::vector<Tunable<BaseParam> *> tunableComponents() override {
+    if (bUseB) {
+      return {&W, &b};
+    } else {
+      return {&W};
     }
+  }
 };
 
 class LinearNode : public Node, public Poolable<LinearNode> {
-public:
-    PNode in;
-    UniParams* param;
+ public:
+  PNode in;
+  UniParams *param;
 
-    void initNode(int dim) override {
-        init(dim);
+  void initNode(int dim) override {
+    init(dim);
+  }
+
+  void setNodeDim(int dim) override {
+    setDim(dim);
+  }
+
+  LinearNode() : Node("linear") {
+    in = NULL;
+    param = NULL;
+  }
+
+  void setParam(UniParams &uni_params) {
+    this->setParam(&uni_params);
+  }
+
+  void setParam(UniParams *paramInit) {
+    if (paramInit->bUseB) {
+      assert(paramInit->W.outDim() == paramInit->b.outDim());
+    }
+    param = paramInit;
+  }
+
+  void forward(Graph &graph, Node &x) {
+    if (x.getDim() != param->W.inDim()) {
+      cerr << boost::format("input dim:%1% preset in dim:%2%") % x.getDim() % param->W.inDim()
+           << endl;
+      abort();
+    }
+    in = &x;
+    in->addParent(this);
+    graph.addNode(this);
+  }
+
+  void compute() override {
+    abort();
+  }
+
+  void backward() override {
+    abort();
+  }
+
+  Executor *generate() override;
+
+  bool typeEqual(PNode other) override {
+    bool result = Node::typeEqual(other);
+    if (!result) return false;
+    LinearNode *conv_other = (LinearNode *) other;
+    if (param != conv_other->param) {
+      return false;
     }
 
-    void setNodeDim(int dim) override {
-        setDim(dim);
-    }
+    return true;
+  }
 
-    LinearNode() : Node("linear") {
-        in = NULL;
-        param = NULL;
-    }
-
-    void setParam(UniParams &uni_params) {
-        this->setParam(&uni_params);
-    }
-
-    void setParam(UniParams* paramInit) {
-        if (paramInit->bUseB) {
-            assert(paramInit->W.outDim() == paramInit->b.outDim());
-        }
-        param = paramInit;
-    }
-
-    void forward(Graph &graph, Node &x) {
-        if (x.getDim() != param->W.inDim()) {
-            cerr << boost::format("input dim:%1% preset in dim:%2%") % x.getDim() % param->W.inDim()
-                << endl;
-            abort();
-        }
-        in = &x;
-        in->addParent(this);
-        graph.addNode(this);
-    }
-
-    void compute() override {
-        abort();
-    }
-
-    void backward() override {
-        abort();
-    }
-
-    Executor * generate() override;
-
-    bool typeEqual(PNode other) override {
-        bool result = Node::typeEqual(other);
-        if (!result) return false;
-        LinearNode* conv_other = (LinearNode*)other;
-        if (param != conv_other->param) {
-            return false;
-        }
-
-        return true;
-    }
-
-    string typeSignature() const override {
-        return Node::typeSignature() + "-" + addressToString(param);
-    }
+  string typeSignature() const override {
+    return Node::typeSignature() + "-" + addressToString(param);
+  }
 };
 
 #if USE_GPU
@@ -306,164 +306,138 @@ public:
     }
 };
 #else
-class LinearExecutor :public Executor {
-public:
-    Tensor2D x, y, b;
-    int inDim, outDim, count;
-    UniParams* param;
+class LinearExecutor : public Executor {
+ public:
+  Tensor2D x, y, b;
+  int inDim, outDim, count;
+  UniParams *param;
 
-    int calculateFLOPs() override {
-        int flops = param->W.inDim() * param->W.outDim() * batch.size() * 2;
-        if (param->bUseB) {
-            flops += param->W.outDim() * batch.size();
-        }
-        return flops;
+  int calculateFLOPs() override {
+    int flops = param->W.inDim() * param->W.outDim() * batch.size() * 2;
+    if (param->bUseB) {
+      flops += param->W.outDim() * batch.size();
+    }
+    return flops;
+  }
+
+  void forward() override {
+    count = batch.size();
+    x.init(inDim, count);
+    y.init(outDim, count);
+    b.init(outDim, count);
+
+    for (int idx = 0; idx < count; idx++) {
+      LinearNode *ptr = (LinearNode *) batch[idx];
+      memcpy(x.v + idx * inDim, ptr->in->val().v, inDim * sizeof(dtype));
+      if (param->bUseB) {
+        memcpy(b.v + idx * outDim, param->b.val.v, outDim * sizeof(dtype));
+      }
     }
 
-    void  forward() override {
-        count = batch.size();
-        x.init(inDim, count);
-        y.init(outDim, count);
-        b.init(outDim, count);
-
-        for (int idx = 0; idx < count; idx++) {
-            LinearNode* ptr = (LinearNode*)batch[idx];
-            memcpy(x.v + idx * inDim, ptr->in->val().v, inDim * sizeof(dtype));
-            if (param->bUseB) {
-                memcpy(b.v + idx * outDim, param->b.val.v, outDim * sizeof(dtype));
-            }
-        }
-
-        y.mat() = param->W.val.mat() * x.mat();
-        if (param->bUseB) {
-            y.vec() = y.vec() + b.vec();
-        }
-
-        for (int idx = 0; idx < count; idx++) {
-            LinearNode* ptr = (LinearNode*)batch[idx];
-            memcpy(ptr->val().v, y.v + idx * outDim, outDim * sizeof(dtype));
-        }
+    y.mat() = param->W.val.mat() * x.mat();
+    if (param->bUseB) {
+      y.vec() = y.vec() + b.vec();
     }
 
-    void backward() override {
-        Tensor2D lx, ly;
-        lx.init(inDim, count);
-        ly.init(outDim, count);
-
-        for (int idx = 0; idx < count; idx++) {
-            LinearNode* ptr = (LinearNode*)batch[idx];
-            memcpy(ly.v + idx * outDim, ptr->loss().v, outDim * sizeof(dtype));
-        }
-
-        param->W.grad.mat() += ly.mat() * x.mat().transpose();
-
-        if (param->bUseB) {
-            for (int idy = 0; idy < outDim; idy++) {
-                for (int idx = 0; idx < count; idx++) {
-                    param->b.grad.v[idy] += ly[idx][idy];
-                }
-            }
-        }
-
-        lx.mat() = param->W.val.mat().transpose() * ly.mat();
-
-        for (int idx = 0; idx < count; idx++) {
-            LinearNode* ptr = (LinearNode*)batch[idx];
-            for (int idy = 0; idy < inDim; idy++) {
-                ptr->in->loss()[idy] += lx[idx][idy];
-            }
-        }
+    for (int idx = 0; idx < count; idx++) {
+      LinearNode *ptr = (LinearNode *) batch[idx];
+      memcpy(ptr->val().v, y.v + idx * outDim, outDim * sizeof(dtype));
     }
+  }
+
+  void backward() override {
+    Tensor2D lx, ly;
+    lx.init(inDim, count);
+    ly.init(outDim, count);
+
+    for (int idx = 0; idx < count; idx++) {
+      LinearNode *ptr = (LinearNode *) batch[idx];
+      memcpy(ly.v + idx * outDim, ptr->loss().v, outDim * sizeof(dtype));
+    }
+
+    param->W.grad.mat() += ly.mat() * x.mat().transpose();
+
+    if (param->bUseB) {
+      for (int idy = 0; idy < outDim; idy++) {
+        for (int idx = 0; idx < count; idx++) {
+          param->b.grad.v[idy] += ly[idx][idy];
+        }
+      }
+    }
+
+    lx.mat() = param->W.val.mat().transpose() * ly.mat();
+
+    for (int idx = 0; idx < count; idx++) {
+      LinearNode *ptr = (LinearNode *) batch[idx];
+      for (int idy = 0; idy < inDim; idy++) {
+        ptr->in->loss()[idy] += lx[idx][idy];
+      }
+    }
+  }
 };
 #endif
-
-Executor * LinearNode::generate() {
-    LinearExecutor* exec = new LinearExecutor();
-    exec->batch.push_back(this);
-    exec->inDim = param->W.inDim();
-    exec->outDim = param->W.outDim();
-    exec->param = param;
-    return exec;
-};
 
 class LinearWordVectorExecutor;
 
 class LinearWordVectorNode : public UniInputNode, public Poolable<LinearWordVectorNode> {
-public:
-    LinearWordVectorNode() : UniInputNode("linear_word_vector_node") {}
+ public:
+  LinearWordVectorNode() : UniInputNode("linear_word_vector_node") {}
 
-    void initNode(int dim) override {
-        init(dim);
+  void initNode(int dim) override {
+    init(dim);
+  }
+
+  void setNodeDim(int dim) override {
+    setDim(dim);
+  }
+
+  bool isDimLegal(const Node &input) const override {
+    return input.getDim() == param_->outDim();
+  }
+
+  void setParam(Param &word_vectors, int offset = 0) {
+    if (offset + getDim() > word_vectors.inDim()) {
+      cerr << boost::format("offset:%1% getDim():%2% word_vectors.inDim():%3%") % offset %
+          getDim() % word_vectors.inDim() << endl;
+      abort();
     }
+    param_ = &word_vectors;
+    offset_ = offset;
+  }
 
-    void setNodeDim(int dim) override {
-        setDim(dim);
-    }
+  void compute() override {
+    abort();
+  }
 
-    bool isDimLegal(const Node &input) const override {
-        return input.getDim() == param_->outDim();
-    }
+  void backward() override {
+    abort();
+  }
 
-    void setParam(Param &word_vectors, int offset = 0) {
-        if (offset + getDim() > word_vectors.inDim()) {
-            cerr << boost::format("offset:%1% getDim():%2% word_vectors.inDim():%3%") % offset %
-                getDim() % word_vectors.inDim() << endl;
-            abort();
-        }
-        param_ = &word_vectors;
-        offset_ = offset;
-    }
+  Executor *generate() override;
 
-    void compute() override {
-        abort();
-    }
+  bool typeEqual(PNode other) override {
+    LinearWordVectorNode *conv_other = (LinearWordVectorNode *) other;
+    return Node::typeEqual(other) && param_ == conv_other->param_ &&
+        offset_ == conv_other->offset_;
+  }
 
-    void backward() override {
-        abort();
-    }
+  string typeSignature() const override {
+    return Node::typeSignature() + "-" + addressToString(param_) + "-" + to_string(offset_);
+  }
 
-    Executor* generate() override;
+  int getOffset() const {
+    return offset_;
+  }
 
-    bool typeEqual(PNode other) override {
-        LinearWordVectorNode* conv_other = (LinearWordVectorNode*)other;
-        return Node::typeEqual(other) && param_ == conv_other->param_ &&
-            offset_ == conv_other->offset_;
-    }
-
-    string typeSignature() const override {
-        return Node::typeSignature() + "-" + addressToString(param_) + "-" + to_string(offset_);
-    }
-
-    int getOffset() const {
-        return offset_;
-    }
-
-private:
-    Param *param_ = nullptr;
-    friend class LinearWordVectorExecutor;
-    int offset_ = 0;
+ private:
+  Param *param_ = nullptr;
+  friend class LinearWordVectorExecutor;
+  int offset_ = 0;
 };
 
 namespace n3ldg_plus {
-    Node *linearWordVector(Graph &graph, int dim, Param &word_vectors, Node &input,
-            int offset = 0) {
-        if (dim + offset > word_vectors.inDim()) {
-            cerr << boost::format("linearWordVector - dim:%1% offset%2% vocabulary_size:%3%") %
-                dim % offset % word_vectors.inDim() << endl;
-            abort();
-        }
-
-        if (input.getDim() != word_vectors.outDim()) {
-            cerr << boost::format("LinearWordVectorNode - input dim:%1% word vector dim:%2%") %
-                input.getDim() % word_vectors.outDim() << endl;
-            abort();
-        }
-
-        LinearWordVectorNode *node =  LinearWordVectorNode::newNode(dim);
-        node->setParam(word_vectors, offset);
-        node->forward(graph, input);
-        return node;
-    }
+Node *linearWordVector(Graph &graph, int dim, Param &word_vectors, Node &input,
+                       int offset = 0);
 }
 
 #if USE_GPU
@@ -612,149 +586,140 @@ public:
 #else
 
 class LinearWordVectorExecutor : public Executor {
-public:
-    Tensor2D x, y;
-    int inDim, outDim;
-    Param *param;
+ public:
+  Tensor2D x, y;
+  int inDim, outDim;
+  Param *param;
 
-    int calculateFLOPs() override {
-        LinearWordVectorNode *node = static_cast<LinearWordVectorNode*>(batch.front());
-        return node->getDim() * node->getInput()->getDim() * batch.size() * 2;
+  int calculateFLOPs() override {
+    LinearWordVectorNode *node = static_cast<LinearWordVectorNode *>(batch.front());
+    return node->getDim() * node->getInput()->getDim() * batch.size() * 2;
+  }
+
+  void forward() override {
+    int count = batch.size();
+    x.init(inDim, count);
+    y.init(outDim, count);
+
+    for (int i = 0; i < count; i++) {
+      LinearWordVectorNode *ptr = (LinearWordVectorNode *) batch.at(i);
+      memcpy(x.v + i * inDim, ptr->getInput()->val().v, inDim * sizeof(dtype));
+    }
+    int offset = static_cast<LinearWordVectorNode *>(batch.front())->offset_;
+    Mat scoped_matrix(param->val.mat().data() + offset * inDim, inDim, outDim);
+    y.mat() = scoped_matrix.transpose() * x.mat();
+
+    for (int i = 0; i < count; i++) {
+      LinearWordVectorNode *ptr = (LinearWordVectorNode *) batch.at(i);
+      memcpy(ptr->val().v, y.v + i * outDim, outDim * sizeof(dtype));
+    }
+  }
+
+  void backward() override {
+    Tensor2D lx, ly;
+    int count = batch.size();
+    lx.init(inDim, count);
+    ly.init(outDim, count);
+
+    for (int idx = 0; idx < count; idx++) {
+      LinearWordVectorNode *ptr = (LinearWordVectorNode *) batch[idx];
+      memcpy(ly.v + idx * outDim, ptr->loss().v, outDim * sizeof(dtype));
     }
 
-    void forward() override {
-        int count = batch.size();
-        x.init(inDim, count);
-        y.init(outDim, count);
+    int offset = static_cast<LinearWordVectorNode *>(batch.front())->offset_;
+    auto scoped_grad = x.mat() * ly.mat().transpose();
+    MatrixXdtype full_grad(inDim, param->inDim()), left(inDim, offset),
+        right(inDim, param->inDim() - offset - outDim);
+    left.setZero();
+    right.setZero();
+    full_grad << left, scoped_grad, right;
+    param->grad.mat() += full_grad;
 
-        for (int i = 0; i < count; i++) {
-            LinearWordVectorNode* ptr = (LinearWordVectorNode*)batch.at(i);
-            memcpy(x.v + i * inDim, ptr->getInput()->val().v, inDim * sizeof(dtype));
-        }
-        int offset = static_cast<LinearWordVectorNode*>(batch.front())->offset_;
-        Mat scoped_matrix(param->val.mat().data() + offset * inDim, inDim, outDim);
-        y.mat() = scoped_matrix.transpose() * x.mat();
+    Mat scoped_matrix(param->val.mat().data() + offset * inDim, inDim, outDim);
+    lx.mat() = scoped_matrix * ly.mat();
 
-        for (int i = 0; i < count; i++) {
-            LinearWordVectorNode* ptr = (LinearWordVectorNode*)batch.at(i);
-            memcpy(ptr->val().v, y.v + i * outDim, outDim * sizeof(dtype));
-        }
+    for (int idx = 0; idx < count; idx++) {
+      LinearWordVectorNode *ptr = (LinearWordVectorNode *) batch[idx];
+      for (int idy = 0; idy < inDim; idy++) {
+        ptr->getInput()->loss()[idy] += lx[idx][idy];
+      }
     }
-
-    void backward() override {
-        Tensor2D lx, ly;
-        int count = batch.size();
-        lx.init(inDim, count);
-        ly.init(outDim, count);
-
-        for (int idx = 0; idx < count; idx++) {
-            LinearWordVectorNode* ptr = (LinearWordVectorNode*)batch[idx];
-            memcpy(ly.v + idx * outDim, ptr->loss().v, outDim * sizeof(dtype));
-        }
-
-        int offset = static_cast<LinearWordVectorNode*>(batch.front())->offset_;
-        auto scoped_grad = x.mat() * ly.mat().transpose();
-        MatrixXdtype full_grad(inDim, param->inDim()), left(inDim, offset),
-                     right(inDim, param->inDim() - offset - outDim);
-        left.setZero();
-        right.setZero();
-        full_grad << left, scoped_grad, right;
-        param->grad.mat() += full_grad;
-
-        Mat scoped_matrix(param->val.mat().data() + offset * inDim, inDim, outDim);
-        lx.mat() = scoped_matrix * ly.mat();
-
-        for (int idx = 0; idx < count; idx++) {
-            LinearWordVectorNode* ptr = (LinearWordVectorNode*)batch[idx];
-            for (int idy = 0; idy < inDim; idy++) {
-                ptr->getInput()->loss()[idy] += lx[idx][idy];
-            }
-        }
-    }
+  }
 };
 
 #endif
 
-Executor* LinearWordVectorNode::generate() {
-    LinearWordVectorExecutor* exec = new LinearWordVectorExecutor();
-    exec->batch.push_back(this);
-    exec->inDim = param_->outDim();
-    exec->outDim = getDim();
-    exec->param = param_;
-    return exec;
-}
-
 class BiasParam : public Param {
-public:
-    BiasParam(const string &name) : Param(name, true) {}
+ public:
+  BiasParam(const string &name) : Param(name, true) {}
 
-    void init(int outDim, int inDim) override {
-        cerr << "BiasParam::init - unsupported method" << endl;
-        abort();
-    }
+  void init(int outDim, int inDim) override {
+    cerr << "BiasParam::init - unsupported method" << endl;
+    abort();
+  }
 
-    void initAsBias(int dim) {
-        Param::init(dim, 1);
-    }
+  void initAsBias(int dim) {
+    Param::init(dim, 1);
+  }
 };
 
 class BiasNode : public UniInputNode, public Poolable<BiasNode> {
-public:
-    BiasNode() : UniInputNode("bias") {}
+ public:
+  BiasNode() : UniInputNode("bias") {}
 
-    void initNode(int dim) override {
-        init(dim);
+  void initNode(int dim) override {
+    init(dim);
+  }
+
+  void setNodeDim(int dim) override {
+    setDim(dim);
+  }
+
+  void init(int dim) override {
+    UniInputNode::init(dim);
+  }
+
+  virtual bool typeEqual(Node *other) override {
+    return UniInputNode::typeEqual(other) && bias_param_ ==
+        static_cast<BiasNode *>(other)->bias_param_;
+  }
+
+  virtual string typeSignature() const override {
+    return UniInputNode::typeSignature() + "-" + addressToString(bias_param_);
+  }
+
+  void compute() override {
+    for (int i = 0; i < getDim(); ++i) {
+      val()[i] = getInput()->getVal()[i] + bias_param_->val[0][i];
     }
+  }
 
-    void setNodeDim(int dim) override {
-        setDim(dim);
+  void backward() override {
+    getInput()->loss().vec() += loss().vec();
+    for (int i = 0; i < getDim(); ++i) {
+      bias_param_->grad[0][i] += getLoss()[i];
     }
+  }
 
-    void init(int dim) override {
-        UniInputNode::init(dim);
+  Executor *generate() override;
+
+  void setParam(BiasParam &param) {
+    bias_param_ = &param;
+    if (getDim() > bias_param_->outDim()) {
+      cerr << boost::format("dim is %1%, but bias param dim is %2%") % getDim() %
+          bias_param_->outDim() << endl;
+      abort();
     }
+  }
 
-    virtual bool typeEqual(Node *other) override {
-        return UniInputNode::typeEqual(other) && bias_param_ ==
-            static_cast<BiasNode *>(other)->bias_param_;
-    }
+ protected:
+  virtual bool isDimLegal(const Node &input) const override {
+    return input.getDim() == getDim();
+  }
 
-    virtual string typeSignature() const override {
-        return UniInputNode::typeSignature() + "-" + addressToString(bias_param_);
-    }
-
-    void compute() override {
-        for (int i = 0; i < getDim(); ++i) {
-            val()[i] = getInput()->getVal()[i] + bias_param_->val[0][i];
-        }
-    }
-
-    void backward() override {
-        getInput()->loss().vec() += loss().vec();
-        for (int i = 0; i < getDim(); ++i) {
-            bias_param_->grad[0][i] += getLoss()[i];
-        }
-    }
-
-    Executor *generate() override;
-
-    void setParam(BiasParam &param) {
-        bias_param_ = &param;
-        if (getDim() > bias_param_->outDim()) {
-            cerr << boost::format("dim is %1%, but bias param dim is %2%") % getDim() %
-                bias_param_->outDim() << endl;
-            abort();
-        }
-    }
-
-protected:
-    virtual bool isDimLegal(const Node &input) const override {
-        return input.getDim() == getDim();
-    }
-
-private:
-    BiasParam *bias_param_;
-    friend class BiasExecutor;
+ private:
+  BiasParam *bias_param_;
+  friend class BiasExecutor;
 };
 
 #if USE_GPU
@@ -799,57 +764,21 @@ private:
 };
 #else
 class BiasExecutor : public Executor {
-public:
-    int calculateFLOPs() override {
-        return defaultFLOPs();
-    }
+ public:
+  int calculateFLOPs() override {
+    return defaultFLOPs();
+  }
 };
 #endif
 
-Executor *BiasNode::generate() {
-    return new BiasExecutor;
-}
-
 namespace n3ldg_plus {
 
-Node *linear(Graph &graph, UniParams &params, Node &input) {
-    int dim = params.W.outDim();
-    LinearNode *uni = LinearNode::newNode(dim);
-    uni->setParam(params);
-    uni->forward(graph, input);
-    return uni;
-}
+Node *linear(Graph &graph, UniParams &params, Node &input);
 
 Node *uni(Graph &graph, UniParams &params, Node &input, ActivatedEnum activated_type =
-        ActivatedEnum::TANH) {
-    int dim = params.W.outDim();
+ActivatedEnum::TANH);
 
-    Node *uni = linear(graph, params, input);
-
-    UniInputNode *activated;
-    if (activated_type == ActivatedEnum::TANH) {
-        activated = TanhNode::newNode(dim);
-    } else if (activated_type == ActivatedEnum::SIGMOID) {
-        activated = SigmoidNode::newNode(dim);
-    } else if (activated_type == ActivatedEnum::RELU) {
-        activated = ReluNode::newNode(dim);
-    } else {
-        cerr << "uni - unsupported activated " << activated << endl;
-        abort();
-    }
-
-    activated->forward(graph, *uni);
-
-    return activated;
-}
-
-Node *bias(Graph &graph, BiasParam &param, Node &input) {
-    int dim = input.getDim();
-    BiasNode *node = BiasNode::newNode(dim);
-    node->setParam(param);
-    node->forward(graph, input);
-    return node;
-}
+Node *bias(Graph &graph, BiasParam &param, Node &input);
 
 }
 
