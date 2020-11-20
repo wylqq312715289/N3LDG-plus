@@ -14,7 +14,7 @@
 #include "N3LDG_cuda.h"
 #endif
 
-#include "MyTensor.h"
+#include "MyTensor-def.h"
 
 #if USE_GPU
 typedef n3ldg_cuda::Tensor2D Tensor2D;

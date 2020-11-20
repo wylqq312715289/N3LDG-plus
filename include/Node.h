@@ -9,7 +9,7 @@
 #include <utility>
 #include <vector>
 #include <set>
-#include "MyTensor.h"
+#include "MyTensor-def.h"
 #include "MyLib.h"
 #include "profiler.h"
 #include <boost/format.hpp>
