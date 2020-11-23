@@ -123,3 +123,25 @@ dtype cost(PNode x, const vector<dtype> &answer, int batchsize) {
   cost += (log(sum2) - log(sum1)) / batchsize;
   return cost;
 }
+
+bool SoftMax(PNode x, vector<dtype> &answer) {
+  answer.clear();
+  int nDim = x->dim;
+
+  dtype sum = 0.0;
+
+  for (int i = 0; i < nDim; ++i) {
+    float tmp = exp(x->val[i]);
+    sum += tmp;
+    answer.push_back(tmp);
+  }
+
+  for (int i = 0; i < nDim; ++i) {
+    answer[i] /= sum;
+  }
+  return true;
+
+}
+
+
+

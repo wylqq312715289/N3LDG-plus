@@ -22,4 +22,6 @@ dtype predict(PNode x, int &y);
 
 dtype cost(PNode x, const vector<dtype> &answer, int batchsize = 1);
 
+bool SoftMax(PNode x, vector<dtype> &answer);
+
 #endif /* _SOFTMAXLOSS_H_ */
