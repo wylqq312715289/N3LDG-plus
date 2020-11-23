@@ -1,5 +1,4 @@
 #ifndef UNIOP_H_
-
 #define UNIOP_H_
 
 /*
