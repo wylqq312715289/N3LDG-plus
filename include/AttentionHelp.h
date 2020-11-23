@@ -15,131 +15,127 @@
 #include <memory>
 
 class AttentionSoftMaxNode : public Node {
-public:
-    vector<dtype> masks, mask_losses;
-    vector<dtype> unnormed_masks;
-    dtype sum;
-    vector<PNode> unnormeds;
-    vector<PNode> ins;
+ public:
+  vector<dtype> masks, mask_losses;
+  vector<dtype> unnormed_masks;
+  dtype sum;
+  vector<PNode> unnormeds;
+  vector<PNode> ins;
 
-    AttentionSoftMaxNode() : Node() {
-        ins.clear();
-        unnormeds.clear();
-        node_type = "AttentionSoftmax";
+  AttentionSoftMaxNode() : Node() {
+    ins.clear();
+    unnormeds.clear();
+    node_type = "AttentionSoftmax";
+  }
+
+  ~AttentionSoftMaxNode() {
+    masks.clear();
+    mask_losses.clear();
+    unnormed_masks.clear();
+    ins.clear();
+    unnormeds.clear();
+  }
+
+  void clearValue() {
+    Node::clearValue();
+    ins.clear();
+    unnormeds.clear();
+    sum = 0;
+  }
+
+  void setParam(int maxsize) {
+    masks.resize(maxsize);
+    mask_losses.resize(maxsize);
+    unnormed_masks.resize(maxsize);
+  }
+
+  void init(int ndim, dtype dropout) {
+    Node::init(ndim, dropout);
+  }
+
+ public:
+  void forward(Graph *cg, const vector<PNode> &x, const vector<PNode> &a) {
+    if (x.size() == 0) {
+      std::cout << "empty inputs for attention help node" << std::endl;
+      return;
+    }
+    if (x.size() != a.size()) {
+      std::cout << "the number of input nodes does not equal the number of attention factors." << std::endl;
+      return;
+    }
+    int nSize = x.size();
+    ins.clear();
+    unnormeds.clear();
+    for (int i = 0; i < nSize; i++) {
+      if (x[i]->val.dim != dim || a[i]->val.dim != 1) {
+        std::cout << "input matrixes are not matched" << std::endl;
+        clearValue();
+        return;
+      }
+      ins.push_back(x[i]);
+      unnormeds.push_back(a[i]);
     }
 
-    ~AttentionSoftMaxNode() {
-        masks.clear();
-        mask_losses.clear();
-        unnormed_masks.clear();
-        ins.clear();
-        unnormeds.clear();
+    degree = 0;
+    for (int i = 0; i < nSize; i++) {
+      ins[i]->addParent(this);
+      unnormeds[i]->addParent(this);
     }
 
-    void clearValue() {
-        Node::clearValue();
-        ins.clear();
-        unnormeds.clear();
-        sum = 0;
+    cg->addNode(this);
+  }
+
+ public:
+  PExecute generate(bool bTrain, dtype cur_drop_factor);
+
+  // better to rewrite for deep understanding
+  bool typeEqual(PNode other) {
+    return Node::typeEqual(other);
+  }
+
+ public:
+
+  void compute() {
+    int nSize = ins.size();
+
+    sum = 0;
+    for (int i = 0; i < nSize; ++i) {
+      unnormed_masks[i] = fexp(unnormeds[i]->val[0]);
+      sum += unnormed_masks[i];
     }
 
-    void setParam(int maxsize) {
-        masks.resize(maxsize);
-        mask_losses.resize(maxsize);
-        unnormed_masks.resize(maxsize);
+    for (int i = 0; i < nSize; ++i) {
+      masks[i] = unnormed_masks[i] / sum;
     }
 
+    val.zero();
+    for (int i = 0; i < nSize; ++i) {
+      val.vec() += masks[i] * ins[i]->val.vec();
+    }
+  }
 
-    void init(int ndim, dtype dropout) {
-        Node::init(ndim, dropout);
+  void backward() {
+    int nSize = ins.size();
+    for (int i = 0; i < nSize; i++) {
+      ins[i]->loss.vec() += loss.vec() * masks[i];
+      mask_losses[i] = 0;
+      for (int idx = 0; idx < dim; idx++) {
+        mask_losses[i] += loss[idx] * ins[i]->val[idx];
+      }
     }
 
-  public:
-    void forward(Graph *cg, const vector<PNode>& x, const vector<PNode>& a) {
-        if (x.size() == 0) {
-            std::cout << "empty inputs for attention help node" << std::endl;
-            return;
+    for (int i = 0; i < nSize; i++) {
+      for (int j = 0; j < nSize; j++) {
+        unnormeds[i]->loss[0] -= masks[i] * masks[j] * mask_losses[j];
+        if (i == j) {
+          unnormeds[i]->loss[0] += masks[i] * mask_losses[i];
         }
-        if (x.size() != a.size()) {
-            std::cout << "the number of input nodes does not equal the number of attention factors." << std::endl;
-            return;
-        }
-        int nSize = x.size();
-        ins.clear();
-        unnormeds.clear();
-        for (int i = 0; i < nSize; i++) {
-            if (x[i]->val.dim != dim || a[i]->val.dim != 1) {
-                std::cout << "input matrixes are not matched" << std::endl;
-                clearValue();
-                return;
-            }
-            ins.push_back(x[i]);
-            unnormeds.push_back(a[i]);
-        }
-
-        degree = 0;
-        for (int i = 0; i < nSize; i++) {
-            ins[i]->addParent(this);
-            unnormeds[i]->addParent(this);
-        }
-
-        cg->addNode(this);
+      }
     }
 
-
-  public:
-    PExecute generate(bool bTrain, dtype cur_drop_factor);
-
-    // better to rewrite for deep understanding
-    bool typeEqual(PNode other) {
-        return Node::typeEqual(other);
-    }
-
-  public:
-
-    void compute() {
-        int nSize = ins.size();
-
-        sum = 0;
-        for (int i = 0; i < nSize; ++i) {
-            unnormed_masks[i] = fexp(unnormeds[i]->val[0]);
-            sum += unnormed_masks[i];
-        }
-
-        for (int i = 0; i < nSize; ++i) {
-            masks[i] = unnormed_masks[i] / sum;
-        }
-
-        val.zero();
-        for (int i = 0; i < nSize; ++i) {
-            val.vec() += masks[i] * ins[i]->val.vec();
-        }
-    }
-
-    void backward() {
-        int nSize = ins.size();
-        for (int i = 0; i < nSize; i++) {
-            ins[i]->loss.vec() += loss.vec() * masks[i];
-            mask_losses[i] = 0;
-            for (int idx = 0; idx < dim; idx++) {
-                mask_losses[i] += loss[idx] * ins[i]->val[idx];
-            }
-        }
-
-        for (int i = 0; i < nSize; i++) {
-            for (int j = 0; j < nSize; j++) {
-                unnormeds[i]->loss[0] -= masks[i] * masks[j] * mask_losses[j];
-                if (i == j) {
-                    unnormeds[i]->loss[0] += masks[i] * mask_losses[i];
-                }
-            }
-        }
-
-
-    }
+  }
 
 };
-
 
 #if USE_GPU
 class AttentionSoftMaxExecute : public Execute {
@@ -248,174 +244,159 @@ public:
 };
 #else
 class AttentionSoftMaxExecute : public Execute {
-  public:
-    void  forward() {
-        int count = batch.size();
-        //#pragma omp parallel for
-        for (int idx = 0; idx < count; idx++) {
-            batch[idx]->compute();
-            batch[idx]->forward_drop(bTrain, drop_factor);
-        }
+ public:
+  void forward() {
+    int count = batch.size();
+    //#pragma omp parallel for
+    for (int idx = 0; idx < count; idx++) {
+      batch[idx]->compute();
+      batch[idx]->forward_drop(bTrain, drop_factor);
     }
+  }
 
-    void backward() {
-        int count = batch.size();
-        //#pragma omp parallel for
-        for (int idx = 0; idx < count; idx++) {
-            batch[idx]->backward_drop();
-            batch[idx]->backward();
-        }
+  void backward() {
+    int count = batch.size();
+    //#pragma omp parallel for
+    for (int idx = 0; idx < count; idx++) {
+      batch[idx]->backward_drop();
+      batch[idx]->backward();
     }
+  }
 };
 #endif
 
-PExecute AttentionSoftMaxNode::generate(bool bTrain, dtype cur_drop_factor) {
-    AttentionSoftMaxExecute* exec = new AttentionSoftMaxExecute();
-    exec->batch.push_back(this);
-    exec->bTrain = bTrain;
-    exec->drop_factor = cur_drop_factor;
-#if USE_GPU
-    exec->dim = dim;
-#endif
-    return exec;
-}
-
-
 class AttentionSoftMaxVNode : public Node {
-  public:
-    vector<Tensor1D> masks, mask_losses;
-    vector<Tensor1D> unnormed_masks;
-    Tensor1D sum;
-    vector<PNode> unnormeds;
-    vector<PNode> ins;
+ public:
+  vector<Tensor1D> masks, mask_losses;
+  vector<Tensor1D> unnormed_masks;
+  Tensor1D sum;
+  vector<PNode> unnormeds;
+  vector<PNode> ins;
 
-  public:
-    AttentionSoftMaxVNode() : Node() {
-        ins.clear();
-        unnormeds.clear();
-        node_type = "AttentionSoftmaxV";
-    }
+ public:
+  AttentionSoftMaxVNode() : Node() {
+    ins.clear();
+    unnormeds.clear();
+    node_type = "AttentionSoftmaxV";
+  }
 
-    ~AttentionSoftMaxVNode() {
-        masks.clear();
-        mask_losses.clear();
-        unnormed_masks.clear();
-        ins.clear();
-        unnormeds.clear();
-    }
+  ~AttentionSoftMaxVNode() {
+    masks.clear();
+    mask_losses.clear();
+    unnormed_masks.clear();
+    ins.clear();
+    unnormeds.clear();
+  }
 
-    void clearValue() {
-        Node::clearValue();
-        ins.clear();
-        unnormeds.clear();
+  void clearValue() {
+    Node::clearValue();
+    ins.clear();
+    unnormeds.clear();
 #if !USE_GPU
-        sum.zero();
+    sum.zero();
 #endif
+  }
+
+  void setParam(int maxsize) {
+    masks.resize(maxsize);
+    mask_losses.resize(maxsize);
+    unnormed_masks.resize(maxsize);
+  }
+
+  void init(int ndim, dtype dropout) {
+    Node::init(ndim, dropout);
+    int count = masks.size();
+    for (int idx = 0; idx < count; idx++) {
+      masks[idx].init(ndim);
+      mask_losses[idx].init(ndim);
+      unnormed_masks[idx].init(ndim);
     }
-
-    void setParam(int maxsize) {
-        masks.resize(maxsize);
-        mask_losses.resize(maxsize);
-        unnormed_masks.resize(maxsize);
-    }
-
-
-    void init(int ndim, dtype dropout) {
-        Node::init(ndim, dropout);
-        int count = masks.size();
-        for (int idx = 0; idx < count; idx++) {
-            masks[idx].init(ndim);
-            mask_losses[idx].init(ndim);
-            unnormed_masks[idx].init(ndim);
-        }
-        sum.init(ndim);
+    sum.init(ndim);
 #if !USE_GPU
-        sum.zero();
+    sum.zero();
 #endif
+  }
+
+ public:
+  void forward(Graph *cg, const vector<PNode> &x, const vector<PNode> &a) {
+    if (x.size() == 0) {
+      std::cout << "empty inputs for attention help node" << std::endl;
+      return;
+    }
+    if (x.size() != a.size()) {
+      std::cout << "the number of input nodes does not equal the number of attention factors." << std::endl;
+      return;
+    }
+    int nSize = x.size();
+    ins.clear();
+    unnormeds.clear();
+    for (int i = 0; i < nSize; i++) {
+      if (x[i]->val.dim != dim || a[i]->val.dim != dim) {
+        std::cout << "input matrixes are not matched" << std::endl;
+        clearValue();
+        return;
+      }
+      ins.push_back(x[i]);
+      unnormeds.push_back(a[i]);
     }
 
-  public:
-    void forward(Graph *cg, const vector<PNode>& x, const vector<PNode>& a) {
-        if (x.size() == 0) {
-            std::cout << "empty inputs for attention help node" << std::endl;
-            return;
-        }
-        if (x.size() != a.size()) {
-            std::cout << "the number of input nodes does not equal the number of attention factors." << std::endl;
-            return;
-        }
-        int nSize = x.size();
-        ins.clear();
-        unnormeds.clear();
-        for (int i = 0; i < nSize; i++) {
-            if (x[i]->val.dim != dim || a[i]->val.dim != dim) {
-                std::cout << "input matrixes are not matched" << std::endl;
-                clearValue();
-                return;
-            }
-            ins.push_back(x[i]);
-            unnormeds.push_back(a[i]);
-        }
-
-        degree = 0;
-        for (int i = 0; i < nSize; i++) {
-            ins[i]->addParent(this);
-            unnormeds[i]->addParent(this);
-        }
-
-        cg->addNode(this);
+    degree = 0;
+    for (int i = 0; i < nSize; i++) {
+      ins[i]->addParent(this);
+      unnormeds[i]->addParent(this);
     }
 
+    cg->addNode(this);
+  }
 
-  public:
-    PExecute generate(bool bTrain, dtype cur_drop_factor);
+ public:
+  PExecute generate(bool bTrain, dtype cur_drop_factor);
 
-    // better to rewrite for deep understanding
-    bool typeEqual(PNode other) {
-        return Node::typeEqual(other);
+  // better to rewrite for deep understanding
+  bool typeEqual(PNode other) {
+    return Node::typeEqual(other);
+  }
+
+ public:
+
+  void compute() {
+    int nSize = ins.size();
+
+    sum.zero();
+    for (int i = 0; i < nSize; ++i) {
+      unnormed_masks[i].vec() = unnormeds[i]->val.vec().unaryExpr(ptr_fun(fexp));
+      sum.vec() += unnormed_masks[i].vec();
     }
 
-  public:
-
-    void compute() {
-        int nSize = ins.size();
-
-        sum.zero();
-        for (int i = 0; i < nSize; ++i) {
-            unnormed_masks[i].vec() = unnormeds[i]->val.vec().unaryExpr(ptr_fun(fexp));
-            sum.vec() += unnormed_masks[i].vec();
-        }
-
-        for (int i = 0; i < nSize; ++i) {
-            masks[i].vec() = unnormed_masks[i].vec() / sum.vec();
-        }
-
-        val.zero();
-        for (int i = 0; i < nSize; ++i) {
-            val.vec() += masks[i].vec() * ins[i]->val.vec();
-        }
+    for (int i = 0; i < nSize; ++i) {
+      masks[i].vec() = unnormed_masks[i].vec() / sum.vec();
     }
 
-    void backward() {
-        int nSize = ins.size();
-        for (int i = 0; i < nSize; i++) {
-            ins[i]->loss.vec() += loss.vec() * masks[i].vec();
-            mask_losses[i].vec() = loss.vec() * ins[i]->val.vec();
-        }
-
-        for (int idx = 0; idx < dim; idx++) {
-            for (int i = 0; i < nSize; i++) {
-                for (int j = 0; j < nSize; j++) {
-                    unnormeds[i]->loss[idx] -= masks[i][idx] * masks[j][idx] * mask_losses[j][idx];
-                    if (i == j) {
-                        unnormeds[i]->loss[idx] += masks[i][idx] * mask_losses[i][idx];
-                    }
-                }
-            }
-        }
-
-
+    val.zero();
+    for (int i = 0; i < nSize; ++i) {
+      val.vec() += masks[i].vec() * ins[i]->val.vec();
     }
+  }
+
+  void backward() {
+    int nSize = ins.size();
+    for (int i = 0; i < nSize; i++) {
+      ins[i]->loss.vec() += loss.vec() * masks[i].vec();
+      mask_losses[i].vec() = loss.vec() * ins[i]->val.vec();
+    }
+
+    for (int idx = 0; idx < dim; idx++) {
+      for (int i = 0; i < nSize; i++) {
+        for (int j = 0; j < nSize; j++) {
+          unnormeds[i]->loss[idx] -= masks[i][idx] * masks[j][idx] * mask_losses[j][idx];
+          if (i == j) {
+            unnormeds[i]->loss[idx] += masks[i][idx] * mask_losses[i][idx];
+          }
+        }
+      }
+    }
+
+  }
 
 };
 
@@ -534,36 +515,25 @@ public:
 };
 #else
 class AttentionSoftMaxVExecute : public Execute {
-  public:
-    void  forward() {
-        int count = batch.size();
-        //#pragma omp parallel for
-        for (int idx = 0; idx < count; idx++) {
-            batch[idx]->compute();
-            batch[idx]->forward_drop(bTrain, drop_factor);
-        }
+ public:
+  void forward() {
+    int count = batch.size();
+    //#pragma omp parallel for
+    for (int idx = 0; idx < count; idx++) {
+      batch[idx]->compute();
+      batch[idx]->forward_drop(bTrain, drop_factor);
     }
+  }
 
-    void backward() {
-        int count = batch.size();
-        //#pragma omp parallel for
-        for (int idx = 0; idx < count; idx++) {
-            batch[idx]->backward_drop();
-            batch[idx]->backward();
-        }
+  void backward() {
+    int count = batch.size();
+    //#pragma omp parallel for
+    for (int idx = 0; idx < count; idx++) {
+      batch[idx]->backward_drop();
+      batch[idx]->backward();
     }
+  }
 };
 #endif
-
-PExecute AttentionSoftMaxVNode::generate(bool bTrain, dtype cur_drop_factor) {
-    AttentionSoftMaxVExecute* exec = new AttentionSoftMaxVExecute();
-    exec->batch.push_back(this);
-    exec->bTrain = bTrain;
-    exec->drop_factor = cur_drop_factor;
-#if USE_GPU
-    exec->dim = dim;
-#endif
-    return exec;
-}
 
 #endif
